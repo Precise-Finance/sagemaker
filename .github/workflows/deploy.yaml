@@ -1,0 +1,125 @@
+name: Continue Deployment after Approval
+
+on:
+  repository_dispatch:
+    types: [deployment-approved]
+
+jobs:
+  post_approval:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy to environment
+      run: |
+        echo "Deploying to ${{ github.event.client_payload.env }}"
+    
+    - name: Tag commit
+      run: |
+        echo "Tagging commit ${{ github.event.client_payload.sha }}"
+    
+    - name: Deploy commit
+      run: |
+        echo "Deploying commit ${{ github.event.client_payload.triggersha }}"
+
+    - name: Checkout Helm repo at specific SHA
+      uses: actions/checkout@v4
+      with:
+        repository: Precise-Finance/charts
+        path: helm-repo
+        ref: ${{ github.event.client_payload.sha }}
+        token: ${{ secrets.GH_SECRET }}
+
+
+    - name: Tag with SHA and ENV
+      run: |
+        cd helm-repo
+        git tag ${{ github.event.client_payload.env }}-${{ github.event.repository.name }}
+        git push origin refs/tags/${{ github.event.client_payload.env }}-${{ github.event.repository.name }} -f --tags
+    
+    - name: start deployment
+      uses: bobheadxi/deployments@v1
+      id: deployment
+      with:
+        step: start
+        token: ${{ secrets.GH_SECRET }}
+        env: ${{ github.event.client_payload.env }}
+        ref: ${{ github.event.client_payload.triggersha }}
+
+    # One day sync with argo
+    # - name: Install ArgoCD CLI
+    #   run: |
+    #     curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+    #     chmod +x /usr/local/bin/argocd
+
+    # - name: Log in to ArgoCD
+    #   run: |
+    #     argocd login ${{ secrets.ARGOCD_SERVER }} --username ${{ secrets.ARGOCD_USERNAME }} --password ${{ secrets.ARGOCD_PASSWORD }} --insecure
+
+    # - name: Wait for ArgoCD Deployment
+    #   run: |
+    #     while [[ $(argocd app get $APP_NAME --output json | jq -r '.status.sync.status') != "Synced" ]] || [[ $(argocd app get $APP_NAME --output json | jq -r '.status.health.status') != "Healthy" ]]; do
+    #       echo "Waiting for application to be synced and healthy..."
+    #       sleep 30
+    #     done
+    #   env:
+    #     APP_NAME: name-of-your-argocd-app
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-west-1
+
+    - name: Login to Amazon ECR Private
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Tag ECR image with ENV-TIMESTAMP
+      run: |
+        REPO_NAME=precise/${{ github.event.repository.name }}
+        SHA_TAG=${{ github.event.client_payload.triggersha }}
+        BASE_ENV_TAG=${{ github.event.client_payload.env }}
+        TIMESTAMP=$(date +%Y%m%d%H%M%S)
+        ENV_TAG="${BASE_ENV_TAG}-${TIMESTAMP}"
+        
+        echo "Repository: $REPO_NAME"
+        echo "SHA Tag: $SHA_TAG"
+        echo "New ENV Tag: $ENV_TAG"
+        
+        # Get the image manifest
+        MANIFEST=$(aws ecr batch-get-image --repository-name $REPO_NAME --image-ids imageTag=$SHA_TAG --query 'images[0].imageManifest' --output text)
+        
+        if [ -z "$MANIFEST" ]; then
+          echo "Error: Could not retrieve manifest for image with tag $SHA_TAG"
+          exit 1
+        fi
+        
+        # Tag with ENV-TIMESTAMP
+        aws ecr put-image \
+          --repository-name $REPO_NAME \
+          --image-tag $ENV_TAG \
+          --image-manifest "$MANIFEST"
+        
+        echo "Tagged image with $ENV_TAG"
+        
+        # Verify the new tag
+        NEW_DIGEST=$(aws ecr describe-images --repository-name $REPO_NAME --image-ids imageTag=$ENV_TAG --query 'imageDetails[0].imageDigest' --output text)
+        SHA_DIGEST=$(aws ecr describe-images --repository-name $REPO_NAME --image-ids imageTag=$SHA_TAG --query 'imageDetails[0].imageDigest' --output text)
+        
+        if [ "$NEW_DIGEST" = "$SHA_DIGEST" ]; then
+          echo "Success: $ENV_TAG tag points to the same image as $SHA_TAG"
+        else
+          echo "Error: $ENV_TAG tag does not point to the same image as $SHA_TAG"
+          exit 1
+        fi
+
+    - name: update deployment status
+      uses: bobheadxi/deployments@v1
+      if: always()
+      with:
+        step: finish
+        token: ${{ secrets.GH_SECRET }}
+        status: success
+        env: ${{ github.event.client_payload.env }}
+        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+        

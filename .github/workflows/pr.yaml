@@ -1,0 +1,21 @@
+name: Code Review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+jobs:
+  gpt_review_node:
+    if: ${{ contains(github.event.*.labels.*.name, 'gpt summary') }} # Optional; to run only when a label is attached
+    runs-on: ubuntu-latest
+    steps:
+      - name: gpt-review-node
+        uses: Precise-Finance/gpt-review@main
+        with:
+          GITHUB_TOKEN: ${{ secrets.GH_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_ORG_KEY: ${{ secrets.OPENAI_ORG_KEY }}
