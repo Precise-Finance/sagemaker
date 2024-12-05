@@ -45,6 +45,7 @@ export class PyTorchTraining extends SageMakerTraining {
     hyperParameters: PyTorchHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     // Add PyTorch-specific metric definitions if none provided
     const defaultMetrics: MetricDefinition[] = [
@@ -58,6 +59,7 @@ export class PyTorchTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
+      monitor,
     );
   }
 }
@@ -90,6 +92,7 @@ export class TensorFlowTraining extends SageMakerTraining {
     hyperParameters: TensorFlowHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: 'loss', Regex: 'loss: ([0-9\\.]+)' },
@@ -102,6 +105,7 @@ export class TensorFlowTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
+      monitor,
     );
   }
 }
@@ -132,6 +136,7 @@ export class XGBoostTraining extends SageMakerTraining {
     hyperParameters: XGBoostHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: 'validation:rmse', Regex: 'validation-rmse:([0-9\\.]+)' },
@@ -143,6 +148,7 @@ export class XGBoostTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
+      monitor,
     );
   }
 }
@@ -173,6 +179,7 @@ export class SklearnTraining extends SageMakerTraining {
     hyperParameters: SklearnHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: 'accuracy', Regex: 'accuracy: ([0-9\\.]+)' },
@@ -184,6 +191,7 @@ export class SklearnTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
+      monitor,
     );
   }
 }
@@ -216,6 +224,7 @@ export class HuggingFaceTraining extends SageMakerTraining {
     hyperParameters: HuggingFaceHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: 'loss', Regex: 'loss: ([0-9\\.]+)' },
@@ -227,6 +236,7 @@ export class HuggingFaceTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
+      monitor,
     );
   }
 }
@@ -264,6 +274,7 @@ export class CustomFrameworkTraining extends SageMakerTraining {
     hyperParameters: Record<string, any>,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     // Default metrics for NeuralForecast
     const defaultMetrics: MetricDefinition[] = [
@@ -276,6 +287,7 @@ export class CustomFrameworkTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
+      monitor,
     );
   }
 }
@@ -312,12 +324,14 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
     },
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     return super.train(
       resourceConfig,
       hyperParameters,
       inputData,
       metricDefinitions,
+      monitor,
     );
   }
 
@@ -330,6 +344,7 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
     },
     data: Buffer | string,
     format: DataFormat = DataFormat.JSON,
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     const inputConfig: InputDataConfig = {
       data,
@@ -337,6 +352,6 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
       channelName: 'train_data',
     };
 
-    return this.train(resourceConfig, hyperParameters, inputConfig);
+    return this.train(resourceConfig, hyperParameters, inputConfig, undefined, monitor);
   }
 }

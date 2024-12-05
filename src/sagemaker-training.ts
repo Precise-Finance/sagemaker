@@ -344,6 +344,7 @@ export class SageMakerTraining {
     hyperParameters: Record<string, any>,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions: MetricDefinition[] = [],
+    monitor: boolean = false,
   ): Promise<TrainingMetadata> {
     this.logger.log('Starting training job...');
     this.logger.log('Resource config:', resourceConfig);
@@ -402,7 +403,9 @@ export class SageMakerTraining {
       );
       this.logger.log(`Training job started with name: ${trainingJobName}`);
 
-      const status = await this.monitorTrainingJob(trainingJobName);
+      const status = monitor 
+        ? await this.monitorTrainingJob(trainingJobName)
+        : 'InProgress' as TrainingJobStatus;
 
       const modelOutputPath = `${trainingJobParams.OutputDataConfig.S3OutputPath}/${trainingJobName}/output/model.tar.gz`;
 
