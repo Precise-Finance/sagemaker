@@ -12,93 +12,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 import * as fs from 'fs';
 import archiver from 'archiver';
 import * as path from 'path';
-
-// Core framework enums and interfaces
-export enum MLFramework {
-  PYTORCH = 'pytorch',
-  TENSORFLOW = 'tensorflow',
-  SKLEARN = 'sklearn',
-  XGBOOST = 'xgboost',
-  HUGGINGFACE = 'huggingface',
-}
-
-export interface FrameworkConfig {
-  framework: MLFramework;
-  frameworkVersion: string;
-  pythonVersion: string;
-  imageUri: string;
-}
-
-export interface AWSCredentials {
-  accessKeyId: string;
-  secretAccessKey: string;
-  sessionToken?: string;
-}
-
-// Training configuration interfaces
-export interface TrainingConfig {
-  role: string;
-  bucket: string;
-  service: string;
-  model: string;
-  region: string;
-  credentials: AWSCredentials;
-}
-
-export interface ResourceConfig {
-  instanceCount: number;
-  instanceType: TrainingInstanceType;
-  volumeSizeGB: number;
-  maxRuntimeSeconds?: number;
-  maxPendingSeconds?: number;
-}
-
-export interface MetricDefinition {
-  Name: string;
-  Regex: string;
-}
-
-// Framework-specific configurations
-export interface FrameworkSpecificConfig {
-  contentType: string;
-  environmentVariables: Record<string, string>;
-  hyperparameterMapping: Record<string, string>;
-}
-
-// Training metadata and results
-export interface TrainingMetadata {
-  trainingJobName: string;
-  modelOutputPath: string;
-  hyperParameters: Record<string, any>;
-  status: TrainingJobStatus;
-  framework: MLFramework;
-}
-
-export enum DataFormat {
-  JSON = 'application/json',
-  CSV = 'text/csv',
-  PARQUET = 'application/x-parquet',
-  LIBSVM = 'application/x-libsvm',
-  RECORDIO = 'application/x-recordio-protobuf',
-  PROTOBUF = 'application/x-protobuf',
-  NUMPY = 'application/x-npy',
-  // Add other formats as needed
-}
-
-export interface InputDataConfig {
-  // The actual data or reference to it
-  data: Buffer | string | NodeJS.ReadableStream; // Can be data, file path, or S3 URI
-  format: DataFormat;
-
-  // Channel configuration
-  channelName?: string; // Default to 'train' for first channel if not specified
-  distributionType?: 'FullyReplicated' | 'ShardedByS3Key';
-  s3DataType?: 'S3Prefix' | 'ManifestFile';
-
-  // Optional metadata about the data structure
-  // This can be used by the training script to understand the data layout
-  schema?: Record<string, string>; // Flexible schema definition
-}
+import { MLFramework, FrameworkSpecificConfig, TrainingConfig, FrameworkConfig, Logger, InputDataConfig, DataFormat, TrainingMetadata, ResourceConfig, MetricDefinition } from './interfaces';
 
 /**
  * Handles framework-specific configurations and requirements
@@ -180,15 +94,18 @@ export class SageMakerTraining {
   private readonly frameworkConfig: FrameworkConfig;
   private readonly sourceDir: string;
   private readonly frameworkSpecificConfig: FrameworkSpecificConfig;
+  private logger: Logger;
 
   constructor(
     config: TrainingConfig,
     frameworkConfig: FrameworkConfig,
     sourceDir: string,
+    logger: Logger,
   ) {
-    console.log('Initializing SageMakerTraining with config:', config);
-    console.log('Framework config:', frameworkConfig);
-    console.log('Source directory:', sourceDir);
+    this.logger = logger;
+    this.logger.log('Initializing SageMakerTraining with config:', config);
+    this.logger.log('Framework config:', frameworkConfig);
+    this.logger.log('Source directory:', sourceDir);
     this.config = config;
     this.frameworkConfig = frameworkConfig;
     this.sourceDir = sourceDir;
@@ -210,7 +127,7 @@ export class SageMakerTraining {
   }
 
   private async prepareSourceDir(trainingJobName: string): Promise<string> {
-    console.log(
+    this.logger.log(
       `Preparing source directory for training job: ${trainingJobName}`,
     );
     const zipPath = path.join(process.cwd(), 'tmp', 'source.tar.gz');
@@ -221,7 +138,7 @@ export class SageMakerTraining {
 
     return new Promise((resolve, reject) => {
       output.on('close', async () => {
-        console.log('Source directory archived successfully.');
+        this.logger.log('Source directory archived successfully.');
         try {
           const key = `${this.config.service}/${this.config.model}/${trainingJobName}/code/source.tar.gz`;
           const upload = new Upload({
@@ -234,12 +151,12 @@ export class SageMakerTraining {
           });
 
           await upload.done();
-          console.log(
+          this.logger.log(
             `Source code uploaded to S3 at: s3://${this.config.bucket}/${key}`,
           );
           return resolve(`s3://${this.config.bucket}/${key}`);
         } catch (error) {
-          console.error('Error uploading source code to S3:', error);
+          this.logger.error('Error uploading source code to S3:', error);
           reject(error);
         }
       });
@@ -254,7 +171,7 @@ export class SageMakerTraining {
   private async monitorTrainingJob(
     trainingJobName: string,
   ): Promise<TrainingJobStatus> {
-    console.log(`Monitoring training job: ${trainingJobName}`);
+    this.logger.log(`Monitoring training job: ${trainingJobName}`);
     while (true) {
       const response = await this.sagemakerClient.send(
         new DescribeTrainingJobCommand({
@@ -263,12 +180,12 @@ export class SageMakerTraining {
       );
 
       const status = response.TrainingJobStatus as TrainingJobStatus;
-      console.log(`Training job status: ${status}`);
+      this.logger.log(`Training job status: ${status}`);
       if (['Completed', 'Failed', 'Stopped'].includes(status)) {
         return status;
       }
 
-      console.log(`Training job is still in status: ${status}. Waiting...`);
+      this.logger.log(`Training job is still in status: ${status}. Waiting...`);
       await new Promise((resolve) => setTimeout(resolve, 60000));
     }
   }
@@ -277,8 +194,8 @@ export class SageMakerTraining {
     inputData: InputDataConfig,
     trainingJobName: string,
   ): Promise<string> {
-    console.log(`Preparing input data for training job: ${trainingJobName}`);
-    console.log('Input data config:', inputData);
+    this.logger.log(`Preparing input data for training job: ${trainingJobName}`);
+    this.logger.log('Input data config:', inputData);
     // Handle S3 URI
     if (
       typeof inputData.data === 'string' &&
@@ -309,14 +226,14 @@ export class SageMakerTraining {
     });
 
     await upload.done();
-    console.log(
+    this.logger.log(
       `Input data uploaded to S3 at: s3://${this.config.bucket}/${key}`,
     );
     return `s3://${this.config.bucket}/${key}`;
   }
 
   private getFileExtension(format: DataFormat): string {
-    console.log(`Getting file extension for data format: ${format}`);
+    this.logger.log(`Getting file extension for data format: ${format}`);
     const extensionMap: Record<DataFormat, string> = {
       [DataFormat.JSON]: 'json',
       [DataFormat.CSV]: 'csv',
@@ -337,13 +254,13 @@ export class SageMakerTraining {
     metricDefinitions: MetricDefinition[],
     inputChannels: Channel[],
   ): CreateTrainingJobCommandInput {
-    console.log('Creating training job parameters...');
-    console.log('Source code location:', sourceCodeLocation);
-    console.log('Training job name:', trainingJobName);
-    console.log('Resource config:', resourceConfig);
-    console.log('Hyperparameters:', hyperParameters);
-    console.log('Metric definitions:', metricDefinitions);
-    console.log('Input channels:', inputChannels);
+    this.logger.log('Creating training job parameters...');
+    this.logger.log('Source code location:', sourceCodeLocation);
+    this.logger.log('Training job name:', trainingJobName);
+    this.logger.log('Resource config:', resourceConfig);
+    this.logger.log('Hyperparameters:', hyperParameters);
+    this.logger.log('Metric definitions:', metricDefinitions);
+    this.logger.log('Input channels:', inputChannels);
     const mappedHyperParameters = Object.entries(hyperParameters).reduce(
       (acc, [key, value]) => {
         const mappedKey =
@@ -365,6 +282,11 @@ export class SageMakerTraining {
         TrainingInputMode: 'File',
         EnableSageMakerMetricsTimeSeries: true,
         MetricDefinitions: metricDefinitions,
+      },
+      Environment: {
+        ...this.frameworkSpecificConfig.environmentVariables,
+        SAGEMAKER_REGION: this.config.region,
+        SAGEMAKER_CONTAINER_LOG_LEVEL: '10',
       },
       RoleArn: this.config.role,
       InputDataConfig: inputChannels,
@@ -399,13 +321,13 @@ export class SageMakerTraining {
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions: MetricDefinition[] = [],
   ): Promise<TrainingMetadata> {
-    console.log('Starting training job...');
-    console.log('Resource config:', resourceConfig);
-    console.log('Hyperparameters:', hyperParameters);
-    console.log('Input data:', inputData);
-    console.log('Metric definitions:', metricDefinitions);
+    this.logger.log('Starting training job...');
+    this.logger.log('Resource config:', resourceConfig);
+    this.logger.log('Hyperparameters:', hyperParameters);
+    this.logger.log('Input data:', inputData);
+    this.logger.log('Metric definitions:', metricDefinitions);
     try {
-      const trainingJobName = `${this.config.service}-${
+      const trainingJobName = `${this.config.service}-${this.config.model}-${
         this.frameworkConfig.framework
       }-${Date.now()}`;
       const sourceCodeLocation = await this.prepareSourceDir(trainingJobName);
@@ -454,13 +376,13 @@ export class SageMakerTraining {
       await this.sagemakerClient.send(
         new CreateTrainingJobCommand(trainingJobParams),
       );
-      console.log(`Training job started with name: ${trainingJobName}`);
+      this.logger.log(`Training job started with name: ${trainingJobName}`);
 
       const status = await this.monitorTrainingJob(trainingJobName);
 
       const modelOutputPath = `${trainingJobParams.OutputDataConfig.S3OutputPath}/${trainingJobName}/output/model.tar.gz`;
 
-      console.log('Training job completed with status:', status);
+      this.logger.log('Training job completed with status:', status);
       return {
         trainingJobName,
         modelOutputPath,
@@ -469,7 +391,7 @@ export class SageMakerTraining {
         framework: this.frameworkConfig.framework,
       };
     } catch (error) {
-      console.error('Error during training job:', error);
+      this.logger.error('Error during training job:', error);
       throw error;
     }
   }

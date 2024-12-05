@@ -1,76 +1,22 @@
 import {
   SageMakerTraining,
+} from './sagemaker-training';
+import {
+  PyTorchHyperParameters,
+  TensorFlowHyperParameters,
+  XGBoostHyperParameters,
+  SklearnHyperParameters,
+  HuggingFaceHyperParameters,
   TrainingConfig,
-  ResourceConfig,
+  Logger,
+  FrameworkConfig,
+  DataFormat,
+  InputDataConfig,
   MetricDefinition,
   MLFramework,
-  FrameworkConfig,
+  ResourceConfig,
   TrainingMetadata,
-  InputDataConfig,
-  DataFormat,
-} from './sagemaker-training';
-
-/**
- * Base interface for framework-specific hyperparameters
- * This ensures type safety for each framework's unique parameters
- */
-interface BaseHyperParameters {
-  [key: string]: any;
-}
-
-/**
- * PyTorch-specific hyperparameters interface
- */
-export interface PyTorchHyperParameters extends BaseHyperParameters {
-  learningRate?: number;
-  batchSize?: number;
-  epochs?: number;
-  optimizerName?: string;
-  momentum?: number;
-  weightDecay?: number;
-  scheduleRate?: number;
-}
-
-/**
- * XGBoost-specific hyperparameters interface
- */
-export interface XGBoostHyperParameters extends BaseHyperParameters {
-  learningRate?: number;
-  maxDepth?: number;
-  nEstimators?: number;
-  minChildWeight?: number;
-  subsample?: number;
-  colsampleBytree?: number;
-  gamma?: number;
-  alpha?: number;
-  lambda?: number;
-}
-
-/**
- * Scikit-learn-specific hyperparameters interface
- */
-export interface SklearnHyperParameters extends BaseHyperParameters {
-  maxDepth?: number;
-  nEstimators?: number;
-  criterion?: string;
-  minSamplesSplit?: number;
-  minSamplesLeaf?: number;
-  maxFeatures?: string | number;
-}
-
-/**
- * HuggingFace-specific hyperparameters interface
- */
-export interface HuggingFaceHyperParameters extends BaseHyperParameters {
-  learningRate?: number;
-  batchSize?: number;
-  epochs?: number;
-  warmupSteps?: number;
-  weightDecay?: number;
-  maxSeqLength?: number;
-  modelName?: string;
-}
-
+} from './interfaces';
 /**
  * PyTorch Extension of SageMaker Training
  */
@@ -78,17 +24,20 @@ export class PyTorchTraining extends SageMakerTraining {
   constructor(
     config: TrainingConfig,
     sourceDir: string,
+    logger: Logger,
     frameworkVersion = '2.1',
     pythonVersion = 'py310',
+    useGpu = true,
   ) {
+    const processor = useGpu ? 'gpu' : 'cpu';
     const frameworkConfig: FrameworkConfig = {
       framework: MLFramework.PYTORCH,
       frameworkVersion,
       pythonVersion,
-      imageUri: `763104351884.dkr.ecr.${config.region}.amazonaws.com/pytorch-training:${frameworkVersion}-gpu-${pythonVersion}`,
+      imageUri: `763104351884.dkr.ecr.${config.region}.amazonaws.com/pytorch-training:${frameworkVersion}-${processor}-${pythonVersion}`,
     };
 
-    super(config, frameworkConfig, sourceDir);
+    super(config, frameworkConfig, sourceDir, logger);
   }
 
   async train(
@@ -114,12 +63,57 @@ export class PyTorchTraining extends SageMakerTraining {
 }
 
 /**
+ * TensorFlow Extension of SageMaker Training
+ */
+export class TensorFlowTraining extends SageMakerTraining {
+  constructor(
+    config: TrainingConfig,
+    sourceDir: string,
+    logger: Logger,
+    frameworkVersion = '2.12',
+    pythonVersion = 'py310',
+    useGpu = true,
+  ) {
+    const processor = useGpu ? 'gpu' : 'cpu';
+    const frameworkConfig: FrameworkConfig = {
+      framework: MLFramework.TENSORFLOW,
+      frameworkVersion,
+      pythonVersion,
+      imageUri: `763104351884.dkr.ecr.${config.region}.amazonaws.com/tensorflow-training:${frameworkVersion}-${processor}-${pythonVersion}`,
+    };
+
+    super(config, frameworkConfig, sourceDir, logger);
+  }
+
+  async train(
+    resourceConfig: ResourceConfig,
+    hyperParameters: TensorFlowHyperParameters,
+    inputData: InputDataConfig | InputDataConfig[],
+    metricDefinitions?: MetricDefinition[],
+  ): Promise<TrainingMetadata> {
+    const defaultMetrics: MetricDefinition[] = [
+      { Name: 'loss', Regex: 'loss: ([0-9\\.]+)' },
+      { Name: 'accuracy', Regex: 'accuracy: ([0-9\\.]+)' },
+      { Name: 'val_loss', Regex: 'val_loss: ([0-9\\.]+)' },
+    ];
+
+    return super.train(
+      resourceConfig,
+      hyperParameters,
+      inputData,
+      metricDefinitions || defaultMetrics,
+    );
+  }
+}
+
+/**
  * XGBoost Extension of SageMaker Training
  */
 export class XGBoostTraining extends SageMakerTraining {
   constructor(
     config: TrainingConfig,
     sourceDir: string,
+    logger: Logger,
     frameworkVersion = '1.5',
     pythonVersion = 'py310',
   ) {
@@ -130,7 +124,7 @@ export class XGBoostTraining extends SageMakerTraining {
       imageUri: `683313688378.dkr.ecr.${config.region}.amazonaws.com/sagemaker-xgboost:${frameworkVersion}`,
     };
 
-    super(config, frameworkConfig, sourceDir);
+    super(config, frameworkConfig, sourceDir, logger);
   }
 
   async train(
@@ -160,6 +154,7 @@ export class SklearnTraining extends SageMakerTraining {
   constructor(
     config: TrainingConfig,
     sourceDir: string,
+    logger: Logger,
     frameworkVersion = '1.0',
     pythonVersion = 'py310',
   ) {
@@ -170,7 +165,7 @@ export class SklearnTraining extends SageMakerTraining {
       imageUri: `683313688378.dkr.ecr.${config.region}.amazonaws.com/sagemaker-scikit-learn:${frameworkVersion}`,
     };
 
-    super(config, frameworkConfig, sourceDir);
+    super(config, frameworkConfig, sourceDir, logger);
   }
 
   async train(
@@ -200,17 +195,20 @@ export class HuggingFaceTraining extends SageMakerTraining {
   constructor(
     config: TrainingConfig,
     sourceDir: string,
-    frameworkVersion = '4.26',
+    logger: Logger,
+    frameworkVersion = '4.28',
     pythonVersion = 'py310',
+    useGpu = true,
   ) {
+    const processor = useGpu ? 'gpu' : 'cpu';
     const frameworkConfig: FrameworkConfig = {
       framework: MLFramework.HUGGINGFACE,
       frameworkVersion,
       pythonVersion,
-      imageUri: `763104351884.dkr.ecr.${config.region}.amazonaws.com/huggingface-pytorch-training:${frameworkVersion}`,
+      imageUri: `763104351884.dkr.ecr.${config.region}.amazonaws.com/huggingface-pytorch-training:${frameworkVersion}-${processor}-${pythonVersion}`,
     };
 
-    super(config, frameworkConfig, sourceDir);
+    super(config, frameworkConfig, sourceDir, logger);
   }
 
   async train(
@@ -248,6 +246,7 @@ export class CustomFrameworkTraining extends SageMakerTraining {
     config: TrainingConfig,
     sourceDir: string,
     customConfig: CustomFrameworkConfig,
+    logger: Logger,
   ) {
     const frameworkConfig: FrameworkConfig = {
       framework: customConfig.framework, // We can specify a base framework if needed
@@ -256,7 +255,7 @@ export class CustomFrameworkTraining extends SageMakerTraining {
       imageUri: customConfig.imageUri,
     };
 
-    super(config, frameworkConfig, sourceDir);
+    super(config, frameworkConfig, sourceDir, logger);
   }
 
   // We can add custom metrics specific to your framework
@@ -287,6 +286,7 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
     config: TrainingConfig,
     sourceDir: string,
     accountId: string,
+    logger: Logger,
     version = '1.7.1',
   ) {
     const customConfig: CustomFrameworkConfig = {
@@ -296,12 +296,10 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
       pythonVersion: 'py310',
       customEnvironmentVariables: {
         // Add any NeuralForecast specific environment variables here
-        SAGEMAKER_PROGRAM: 'train.py',
-        SAGEMAKER_SUBMIT_DIRECTORY: '/opt/ml/model/code',
       },
     };
 
-    super(config, sourceDir, customConfig);
+    super(config, sourceDir, customConfig, logger);
   }
 
   // Add NeuralForecast specific hyperparameter interface

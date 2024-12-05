@@ -7,44 +7,50 @@ import {
   UpdateEndpointCommand,
   DescribeEndpointCommand,
 } from "@aws-sdk/client-sagemaker";
-import { AWSCredentials, MLFramework } from "./sagemaker-training";
+import { DeploymentConfig, DeploymentResult, FrameworkModelConfig, Logger, MLFramework, ServerlessConfig } from "./interfaces";
 
-export interface ServerlessConfig {
-  memorySizeInMb: number;
-  maxConcurrency: number;
-}
+export class ImageUriProvider {
+  private readonly region: string;
 
-export interface BaseModelConfig {
-  modelData: string;
-  role: string;
-  entryPoint: string;
-  imageUri: string;
-}
+  constructor(region: string) {
+    this.region = region;
+  }
 
-export interface FrameworkModelConfig extends BaseModelConfig {
-  frameworkVersion: string;
-  pythonVersion: string;
-  framework: MLFramework;
-}
+  getDefaultImageUri(
+    modelConfig: FrameworkModelConfig,
+  ): string {
+    const processor = modelConfig.useGpu ? "gpu" : "cpu";
+    switch (modelConfig.framework) {
+      case MLFramework.PYTORCH:
+        return `763104351884.dkr.ecr.${this.region}.amazonaws.com/pytorch-inference:${modelConfig.frameworkVersion}-${processor}-${modelConfig.pythonVersion}`;
 
-export interface DeploymentConfig {
-  region: string;
-  endpointName: string;
-  credentials: AWSCredentials;
-}
+      case MLFramework.TENSORFLOW:
+        return `763104351884.dkr.ecr.${this.region}.amazonaws.com/tensorflow-inference:${modelConfig.frameworkVersion}-${processor}-${modelConfig.pythonVersion}`;
 
-export interface DeploymentResult {
-  modelName: string;
-  endpointName: string;
-  status: "Created" | "Updated";
+      case MLFramework.HUGGINGFACE:
+        return `763104351884.dkr.ecr.${this.region}.amazonaws.com/huggingface-pytorch-inference:${modelConfig.frameworkVersion}-transformers-${modelConfig.pythonVersion}`;
+
+      case MLFramework.XGBOOST:
+        return `683313688378.dkr.ecr.${this.region}.amazonaws.com/sagemaker-xgboost-inference:${modelConfig.frameworkVersion}`;
+
+      case MLFramework.SKLEARN:
+        return `683313688378.dkr.ecr.${this.region}.amazonaws.com/sagemaker-scikit-learn-inference:${modelConfig.frameworkVersion}`;
+
+      default:
+        return "";
+    }
+  }
 }
 
 export abstract class BaseSageMakerDeployment {
   protected client: SageMakerClient;
   protected readonly config: DeploymentConfig;
+  protected logger: Logger;
+  private readonly imageUriProvider: ImageUriProvider;
 
-  constructor(config: DeploymentConfig) {
+  constructor(config: DeploymentConfig, logger: Logger) {
     this.config = config;
+    this.logger = logger;
     this.client = new SageMakerClient({
       region: config.region,
       credentials: {
@@ -53,6 +59,7 @@ export abstract class BaseSageMakerDeployment {
         sessionToken: config.credentials.sessionToken,
       },
     });
+    this.imageUriProvider = new ImageUriProvider(config.region);
   }
 
   protected abstract getFrameworkEnvironment(
@@ -76,19 +83,21 @@ export abstract class BaseSageMakerDeployment {
       const modelName = `model-${resourceId}`;
       const configName = `config-${resourceId}`;
 
+      this.logger.log(`Creating model with name: ${modelName}`);
       // Create model with framework-specific environment
       await this.client.send(
         new CreateModelCommand({
           ModelName: modelName,
           ExecutionRoleArn: modelConfig.role,
           PrimaryContainer: {
-            Image: modelConfig.imageUri,
+            Image: modelConfig.imageUri ?? this.imageUriProvider.getDefaultImageUri(modelConfig),
             ModelDataUrl: modelConfig.modelData,
             Environment: this.getFrameworkEnvironment(modelConfig),
           },
         })
       );
 
+      this.logger.log(`Creating endpoint config with name: ${configName}`);
       // Create endpoint config
       await this.client.send(
         new CreateEndpointConfigCommand({
@@ -109,6 +118,9 @@ export abstract class BaseSageMakerDeployment {
       const exists = await this.endpointExists();
 
       if (exists) {
+        this.logger.log(
+          `Updating existing endpoint: ${this.config.endpointName}`
+        );
         await this.client.send(
           new UpdateEndpointCommand({
             EndpointName: this.config.endpointName,
@@ -122,6 +134,7 @@ export abstract class BaseSageMakerDeployment {
           status: "Updated",
         };
       } else {
+        this.logger.log(`Creating new endpoint: ${this.config.endpointName}`);
         await this.client.send(
           new CreateEndpointCommand({
             EndpointName: this.config.endpointName,
@@ -136,7 +149,7 @@ export abstract class BaseSageMakerDeployment {
         };
       }
     } catch (error) {
-      console.error("Deployment failed:", error);
+      this.logger.error("Deployment failed:", error);
       throw error;
     }
   }
@@ -210,9 +223,10 @@ export class CustomDeployment extends BaseSageMakerDeployment {
 
   constructor(
     config: DeploymentConfig,
+    logger: Logger,
     customEnvironment: Record<string, string>
   ) {
-    super(config);
+    super(config, logger);
     this.customEnvironment = customEnvironment;
   }
 

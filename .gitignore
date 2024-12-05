@@ -4,6 +4,8 @@
 /reports
 /.nyc_output
 test-results.xml
+/tests
+train.ts
 
 .history
 .DS_Store
