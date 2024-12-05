@@ -126,12 +126,30 @@ export class SageMakerTraining {
     this.s3Client = new S3Client(sharedConfig);
   }
 
+  private cleanupTempFiles(filePath: string) {
+    this.logger.log(`Cleaning up temporary path: ${filePath}`);
+    try {
+      if (fs.existsSync(filePath)) {
+        // If it's a directory, remove it recursively
+        if (fs.lstatSync(filePath).isDirectory()) {
+          fs.rmSync(filePath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(filePath);
+        }
+        this.logger.log('Cleanup completed successfully');
+      }
+    } catch (error) {
+      this.logger.error('Error during cleanup:', error);
+    }
+  }
+
   private async prepareSourceDir(trainingJobName: string): Promise<string> {
     this.logger.log(
       `Preparing source directory for training job: ${trainingJobName}`,
     );
-    const zipPath = path.join(process.cwd(), 'tmp', 'source.tar.gz');
-    fs.mkdirSync(path.dirname(zipPath), { recursive: true });
+    const tempDir = path.join(process.cwd(), 'tmp', trainingJobName);
+    fs.mkdirSync(tempDir, { recursive: true });
+    const zipPath = path.join(tempDir, 'source.tar.gz');
 
     const output = fs.createWriteStream(zipPath);
     const archive = archiver('tar', { gzip: true });
@@ -154,14 +172,20 @@ export class SageMakerTraining {
           this.logger.log(
             `Source code uploaded to S3 at: s3://${this.config.bucket}/${key}`,
           );
+          this.cleanupTempFiles(tempDir);
           return resolve(`s3://${this.config.bucket}/${key}`);
         } catch (error) {
+          this.cleanupTempFiles(tempDir);
           this.logger.error('Error uploading source code to S3:', error);
           reject(error);
         }
       });
 
-      archive.on('error', reject);
+      archive.on('error', (error) => {
+        this.cleanupTempFiles(tempDir);
+        reject(error);
+      });
+      
       archive.pipe(output);
       archive.directory(this.sourceDir, false);
       archive.finalize();
