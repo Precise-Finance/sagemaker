@@ -7,22 +7,45 @@ export interface AWSCredentials {
   sessionToken?: string;
 }
 
-// Base configurations
+// Base configurations - AWS level only
 export interface BaseConfig {
   region: string;
   credentials: AWSCredentials;
+  bucket: string;
+  role: string;
 }
 
+// Framework Configuration extends Base AWS config
+export interface FrameworkDeployConfig extends BaseConfig {
+  framework: MLFramework;
+  frameworkVersion: string;
+  pythonVersion: string;
+  entryPoint: string;
+  environmentVariables: Record<string, string>;
+}
+
+// Training specific configuration
 export interface TrainingConfig extends BaseConfig {
-  role: string;
-  bucket: string;
-  service: string;
+  service: string;  // Service/model specific
   model: string;
 }
 
-export interface DeploymentConfig extends BaseConfig {
-  endpointName: string;
+// Dynamic Model Deployment Configuration
+export interface ModelDeploymentInput {
+  service: string;  // Move service/model to deployment input
+  model: string;
+  trainingJobName?: string;
+  modelPath?: string;
   useGpu?: boolean;
+}
+
+// Static Framework Configuration
+export interface FrameworkDeployConfig {
+  framework: MLFramework;
+  frameworkVersion: string;
+  pythonVersion: string;
+  entryPoint: string;
+  environmentVariables: Record<string, string>;
 }
 
 // Framework related interfaces
@@ -92,20 +115,6 @@ export interface InputDataConfig {
 export interface ServerlessConfig {
   memorySizeInMb: number;
   maxConcurrency: number;
-}
-
-export interface BaseModelConfig {
-  modelData: string;
-  role: string;
-  entryPoint: string;
-  imageUri?: string;
-  useGpu?: boolean;
-}
-
-export interface FrameworkModelConfig extends BaseModelConfig {
-  frameworkVersion: string;
-  pythonVersion: string;
-  framework: MLFramework;
 }
 
 export interface DeploymentResult {
