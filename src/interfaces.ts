@@ -32,11 +32,10 @@ export interface TrainingConfig extends BaseConfig {
 
 // Dynamic Model Deployment Configuration
 export interface ModelDeploymentInput {
-  service: string;  // Move service/model to deployment input
-  model: string;
   trainingJobName?: string;
   modelPath?: string;
   useGpu?: boolean;
+  environmentVariables?: Record<string, string>;
 }
 
 // Static Framework Configuration

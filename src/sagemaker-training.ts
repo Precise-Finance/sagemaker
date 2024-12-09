@@ -352,9 +352,7 @@ export class SageMakerTraining {
     this.logger.log('Input data:', inputData);
     this.logger.log('Metric definitions:', metricDefinitions);
     try {
-      const trainingJobName = `${this.config.service}-${this.config.model}-${
-        this.frameworkConfig.framework
-      }-${Date.now()}`;
+      const trainingJobName = `${this.config.service}-${this.config.model}-${Date.now()}`;
       const sourceCodeLocation = await this.prepareSourceDir(trainingJobName);
 
       // Handle multiple input channels

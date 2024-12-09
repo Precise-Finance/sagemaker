@@ -54,10 +54,19 @@ export abstract class BaseSageMakerDeployment {
   protected readonly config: FrameworkDeployConfig;
   protected readonly imageUriProvider: ImageUriProvider;
   protected logger: Logger;
+  protected readonly service: string;
+  protected readonly model: string;
 
-  constructor(config: FrameworkDeployConfig, logger: Logger) {
+  constructor(
+    config: FrameworkDeployConfig,
+    logger: Logger,
+    service: string,
+    model: string
+  ) {
     this.config = config;
     this.logger = logger;
+    this.service = service;
+    this.model = model;
     this.client = new SageMakerClient({
       region: config.region,
       credentials: config.credentials,
@@ -65,54 +74,39 @@ export abstract class BaseSageMakerDeployment {
     this.imageUriProvider = new ImageUriProvider(config.region);
   }
 
-  protected abstract getFrameworkEnvironment(
-    modelConfig: FrameworkDeployConfig
-  ): Record<string, string>;
+  protected abstract getFrameworkEnvironment(): Record<string, string>;
 
   protected generateResourceId(): string {
     return `${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
   }
 
-  protected getEndpointName(modelConfig: ModelDeploymentInput): string {
-    return `${modelConfig.service}-${modelConfig.model}-endpoint`;
+  protected getEndpointName(): string {
+    return `${this.service}-${this.model}-endpoint`;
   }
 
-  protected getModelName(
-    modelConfig: ModelDeploymentInput,
-    resourceId: string
-  ): string {
-    if (modelConfig.trainingJobName) {
-      return `${modelConfig.service}-${modelConfig.model}-model-${modelConfig.trainingJobName}`;
-    }
-    return `${modelConfig.service}-${modelConfig.model}-model-${resourceId}`;
+  protected getModelName(resourceId: string): string {
+    return `${this.service}-${this.model}-${resourceId}`;
   }
 
-  protected getConfigName(
-    modelConfig: ModelDeploymentInput,
-    resourceId: string
-  ): string {
-    if (modelConfig.trainingJobName) {
-      return `${modelConfig.service}-${modelConfig.model}-config-${modelConfig.trainingJobName}`;
-    }
-    return `${modelConfig.service}-${modelConfig.model}-config-${resourceId}`;
+  protected getConfigName(resourceId: string): string {
+    return `${this.service}-${this.model}-${resourceId}`;
   }
 
-  protected getS3ModelPath(modelConfig: ModelDeploymentInput): string {
-    if (modelConfig.modelPath) {
-      if (modelConfig.modelPath.startsWith("s3://")) {
-        return modelConfig.modelPath;
+  protected getS3ModelPath(deployInput: ModelDeploymentInput): string {
+    if (deployInput.modelPath) {
+      if (deployInput.modelPath.startsWith("s3://")) {
+        return deployInput.modelPath;
       }
-      return `s3://${this.config.bucket}/${modelConfig.service}/${
-        modelConfig.model
-      }/models/${path.basename(modelConfig.modelPath)}`;
+      return `s3://${this.config.bucket}/${this.service}/${
+        this.model
+      }/models/${path.basename(deployInput.modelPath)}`;
     }
 
-    if (!modelConfig.trainingJobName) {
+    if (!deployInput.trainingJobName) {
       throw new Error("Either modelPath or trainingJobName must be provided");
     }
 
-    // Use the standard SageMaker training output path pattern
-    return `s3://${this.config.bucket}/${modelConfig.service}/${modelConfig.model}/${modelConfig.trainingJobName}/output/model.tar.gz`;
+    return `s3://${this.config.bucket}/${this.service}/${this.model}/${deployInput.trainingJobName}/output/model.tar.gz`;
   }
 
   protected async createModel(params: {
@@ -142,7 +136,7 @@ export abstract class BaseSageMakerDeployment {
   }
 
   public async deploy(
-    modelConfig: ModelDeploymentInput,
+    deployInput: ModelDeploymentInput,
     serverlessConfig: ServerlessConfig,
     options: {
       waitForDeployment?: boolean;
@@ -151,10 +145,10 @@ export abstract class BaseSageMakerDeployment {
   ): Promise<DeploymentResult> {
     try {
       const resourceId = this.generateResourceId();
-      const modelName = this.getModelName(modelConfig, resourceId);
-      const configName = this.getConfigName(modelConfig, resourceId);
-      const endpointName = this.getEndpointName(modelConfig);
-      const modelPath = this.getS3ModelPath(modelConfig);
+      const modelName = `${(deployInput.trainingJobName ?? this.getModelName(resourceId))}-model`;
+      const configName = `${deployInput.trainingJobName ?? this.getConfigName(resourceId)}-config`;
+      const endpointName = this.getEndpointName();
+      const modelPath = this.getS3ModelPath(deployInput);
 
       await this.createModel({
         modelName,
@@ -163,11 +157,12 @@ export abstract class BaseSageMakerDeployment {
           this.config.framework,
           this.config.frameworkVersion,
           this.config.pythonVersion,
-          modelConfig.useGpu
+          deployInput.useGpu
         ),
         environment: {
-          ...this.config.environmentVariables,
-          SAGEMAKER_PROGRAM: this.config.entryPoint,
+          ...(this.getFrameworkEnvironment() || {}),
+          ...(this.config.environmentVariables || {}),
+          ...(deployInput.environmentVariables || {}),
         },
       });
 
@@ -188,11 +183,11 @@ export abstract class BaseSageMakerDeployment {
           Tags: [
             {
               Key: "Service",
-              Value: modelConfig.service,
+              Value: this.service,
             },
             {
               Key: "Model",
-              Value: modelConfig.model,
+              Value: this.model,
             },
           ],
         })
@@ -223,11 +218,11 @@ export abstract class BaseSageMakerDeployment {
             Tags: [
               {
                 Key: "Service",
-                Value: modelConfig.service,
+                Value: this.service,
               },
               {
                 Key: "Model",
-                Value: modelConfig.model,
+                Value: this.model,
               },
             ],
           })
@@ -264,9 +259,7 @@ export abstract class BaseSageMakerDeployment {
 
 // src/frameworks/pytorch.ts
 export class PyTorchDeployment extends BaseSageMakerDeployment {
-  protected getFrameworkEnvironment(
-    modelConfig: FrameworkDeployConfig
-  ): Record<string, string> {
+  protected getFrameworkEnvironment(): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: this.config.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
@@ -279,9 +272,7 @@ export class PyTorchDeployment extends BaseSageMakerDeployment {
 
 // src/frameworks/tensorflow.ts
 export class TensorFlowDeployment extends BaseSageMakerDeployment {
-  protected getFrameworkEnvironment(
-    modelConfig: FrameworkDeployConfig
-  ): Record<string, string> {
+  protected getFrameworkEnvironment(): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: this.config.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
@@ -294,9 +285,7 @@ export class TensorFlowDeployment extends BaseSageMakerDeployment {
 
 // src/frameworks/huggingface.ts
 export class HuggingFaceDeployment extends BaseSageMakerDeployment {
-  protected getFrameworkEnvironment(
-    modelConfig: FrameworkDeployConfig
-  ): Record<string, string> {
+  protected getFrameworkEnvironment(): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: this.config.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
@@ -315,15 +304,15 @@ export class CustomDeployment extends BaseSageMakerDeployment {
   constructor(
     config: FrameworkDeployConfig,
     logger: Logger,
+    service: string,
+    model: string,
     customEnvironment: Record<string, string>
   ) {
-    super(config, logger);
+    super(config, logger, service, model);
     this.customEnvironment = customEnvironment;
   }
 
-  protected getFrameworkEnvironment(
-    modelConfig: FrameworkDeployConfig
-  ): Record<string, string> {
+  protected getFrameworkEnvironment(): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: this.config.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
