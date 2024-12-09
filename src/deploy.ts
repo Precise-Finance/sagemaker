@@ -51,6 +51,7 @@ export class ImageUriProvider {
 
 export abstract class BaseSageMakerDeployment {
   protected client: SageMakerClient;
+  protected readonly framework: MLFramework;
   protected readonly config: FrameworkDeployConfig;
   protected readonly imageUriProvider: ImageUriProvider;
   protected logger: Logger;
@@ -58,6 +59,7 @@ export abstract class BaseSageMakerDeployment {
   protected readonly model: string;
 
   constructor(
+    framework: MLFramework,
     config: FrameworkDeployConfig,
     logger: Logger,
     service: string,
@@ -128,7 +130,7 @@ export abstract class BaseSageMakerDeployment {
         Tags: [
           {
             Key: "Framework",
-            Value: this.config.framework,
+            Value: this.framework,
           },
         ],
       })
@@ -154,7 +156,7 @@ export abstract class BaseSageMakerDeployment {
         modelName,
         modelPath,
         imageUri: this.imageUriProvider.getDefaultImageUri(
-          this.config.framework,
+          this.framework,
           this.config.frameworkVersion,
           this.config.pythonVersion,
           deployInput.useGpu
@@ -257,8 +259,13 @@ export abstract class BaseSageMakerDeployment {
   }
 }
 
-// src/frameworks/pytorch.ts
+
 export class PyTorchDeployment extends BaseSageMakerDeployment {
+  constructor(config: FrameworkDeployConfig, logger: Logger, service: string, model: string) {
+    super(MLFramework.PYTORCH, config, logger, service, model);
+    
+  }
+
   protected getFrameworkEnvironment(): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: this.config.entryPoint,
@@ -270,8 +277,12 @@ export class PyTorchDeployment extends BaseSageMakerDeployment {
   }
 }
 
-// src/frameworks/tensorflow.ts
+
 export class TensorFlowDeployment extends BaseSageMakerDeployment {
+  constructor(config: FrameworkDeployConfig, logger: Logger, service: string, model: string) {
+    super(MLFramework.TENSORFLOW, config, logger, service, model);
+  }
+
   protected getFrameworkEnvironment(): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: this.config.entryPoint,
@@ -283,8 +294,12 @@ export class TensorFlowDeployment extends BaseSageMakerDeployment {
   }
 }
 
-// src/frameworks/huggingface.ts
+
 export class HuggingFaceDeployment extends BaseSageMakerDeployment {
+  constructor(config: FrameworkDeployConfig, logger: Logger, service: string, model: string) {
+    super(MLFramework.HUGGINGFACE, config, logger, service, model);
+  }
+
   protected getFrameworkEnvironment(): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: this.config.entryPoint,
@@ -293,30 +308,6 @@ export class HuggingFaceDeployment extends BaseSageMakerDeployment {
       SAGEMAKER_FRAMEWORK_MODULE: "sagemaker.huggingface.serving:main",
       SAGEMAKER_PYTHON_VERSION: this.config.pythonVersion,
       SAGEMAKER_HF_TASK: "text-classification", // Can be made configurable
-    };
-  }
-}
-
-// src/frameworks/custom.ts
-export class CustomDeployment extends BaseSageMakerDeployment {
-  private customEnvironment: Record<string, string>;
-
-  constructor(
-    config: FrameworkDeployConfig,
-    logger: Logger,
-    service: string,
-    model: string,
-    customEnvironment: Record<string, string>
-  ) {
-    super(config, logger, service, model);
-    this.customEnvironment = customEnvironment;
-  }
-
-  protected getFrameworkEnvironment(): Record<string, string> {
-    return {
-      SAGEMAKER_PROGRAM: this.config.entryPoint,
-      SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
-      ...this.customEnvironment,
     };
   }
 }

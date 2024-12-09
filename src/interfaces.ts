@@ -17,7 +17,6 @@ export interface BaseConfig {
 
 // Framework Configuration extends Base AWS config
 export interface FrameworkDeployConfig extends BaseConfig {
-  framework: MLFramework;
   frameworkVersion: string;
   pythonVersion: string;
   entryPoint: string;
@@ -36,15 +35,6 @@ export interface ModelDeploymentInput {
   modelPath?: string;
   useGpu?: boolean;
   environmentVariables?: Record<string, string>;
-}
-
-// Static Framework Configuration
-export interface FrameworkDeployConfig {
-  framework: MLFramework;
-  frameworkVersion: string;
-  pythonVersion: string;
-  entryPoint: string;
-  environmentVariables: Record<string, string>;
 }
 
 // Framework related interfaces
