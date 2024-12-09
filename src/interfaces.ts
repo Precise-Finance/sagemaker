@@ -1,4 +1,7 @@
-import { TrainingJobStatus, TrainingInstanceType } from '@aws-sdk/client-sagemaker';
+import {
+  TrainingJobStatus,
+  TrainingInstanceType,
+} from "@aws-sdk/client-sagemaker";
 
 // Core AWS interfaces
 export interface AWSCredentials {
@@ -17,37 +20,38 @@ export interface BaseConfig {
 
 // Framework Configuration extends Base AWS config
 export interface FrameworkDeployConfig extends BaseConfig {
-  frameworkVersion: string;
-  pythonVersion: string;
-  entryPoint: string;
   environmentVariables: Record<string, string>;
 }
 
 // Training specific configuration
 export interface TrainingConfig extends BaseConfig {
-  service: string;  // Service/model specific
+  service: string; // Service/model specific
   model: string;
+  framework: MLFramework;
 }
 
 // Dynamic Model Deployment Configuration
 export interface ModelDeploymentInput {
+  frameworkVersion: string;
+  pythonVersion: string;
+  entryPoint: string;
   trainingJobName?: string;
   modelPath?: string;
   useGpu?: boolean;
+  imageUri?: string;
   environmentVariables?: Record<string, string>;
 }
 
 // Framework related interfaces
 export enum MLFramework {
-  PYTORCH = 'pytorch',
-  TENSORFLOW = 'tensorflow',
-  SKLEARN = 'sklearn',
-  XGBOOST = 'xgboost',
-  HUGGINGFACE = 'huggingface',
+  PYTORCH = "pytorch",
+  TENSORFLOW = "tensorflow",
+  SKLEARN = "sklearn",
+  XGBOOST = "xgboost",
+  HUGGINGFACE = "huggingface",
 }
 
 export interface FrameworkConfig {
-  framework: MLFramework;
   frameworkVersion: string;
   pythonVersion: string;
   imageUri: string;
@@ -82,21 +86,21 @@ export interface TrainingMetadata {
 }
 
 export enum DataFormat {
-  JSON = 'application/json',
-  CSV = 'text/csv',
-  PARQUET = 'application/x-parquet',
-  LIBSVM = 'application/x-libsvm',
-  RECORDIO = 'application/x-recordio-protobuf',
-  PROTOBUF = 'application/x-protobuf',
-  NUMPY = 'application/x-npy',
+  JSON = "application/json",
+  CSV = "text/csv",
+  PARQUET = "application/x-parquet",
+  LIBSVM = "application/x-libsvm",
+  RECORDIO = "application/x-recordio-protobuf",
+  PROTOBUF = "application/x-protobuf",
+  NUMPY = "application/x-npy",
 }
 
 export interface InputDataConfig {
   data: Buffer | string | NodeJS.ReadableStream;
   format: DataFormat;
   channelName?: string;
-  distributionType?: 'FullyReplicated' | 'ShardedByS3Key';
-  s3DataType?: 'S3Prefix' | 'ManifestFile';
+  distributionType?: "FullyReplicated" | "ShardedByS3Key";
+  s3DataType?: "S3Prefix" | "ManifestFile";
   schema?: Record<string, string>;
 }
 

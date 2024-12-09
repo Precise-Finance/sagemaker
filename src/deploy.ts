@@ -76,7 +76,7 @@ export abstract class BaseSageMakerDeployment {
     this.imageUriProvider = new ImageUriProvider(config.region);
   }
 
-  protected abstract getFrameworkEnvironment(): Record<string, string>;
+  protected abstract getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string>;
 
   protected generateResourceId(): string {
     return `${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -155,14 +155,14 @@ export abstract class BaseSageMakerDeployment {
       await this.createModel({
         modelName,
         modelPath,
-        imageUri: this.imageUriProvider.getDefaultImageUri(
+        imageUri: deployInput.imageUri ?? this.imageUriProvider.getDefaultImageUri(
           this.framework,
-          this.config.frameworkVersion,
-          this.config.pythonVersion,
+          deployInput.frameworkVersion,
+          deployInput.pythonVersion,
           deployInput.useGpu
         ),
         environment: {
-          ...(this.getFrameworkEnvironment() || {}),
+          ...(this.getFrameworkEnvironment(deployInput) || {}),
           ...(this.config.environmentVariables || {}),
           ...(deployInput.environmentVariables || {}),
         },
@@ -266,13 +266,13 @@ export class PyTorchDeployment extends BaseSageMakerDeployment {
     
   }
 
-  protected getFrameworkEnvironment(): Record<string, string> {
+  protected getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string> {
     return {
-      SAGEMAKER_PROGRAM: this.config.entryPoint,
+      SAGEMAKER_PROGRAM: deployInput.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
-      SAGEMAKER_FRAMEWORK_VERSION: this.config.frameworkVersion,
+      SAGEMAKER_FRAMEWORK_VERSION: deployInput.frameworkVersion,
       SAGEMAKER_FRAMEWORK_MODULE: "sagemaker.pytorch.serving:main",
-      SAGEMAKER_PYTHON_VERSION: this.config.pythonVersion,
+      SAGEMAKER_PYTHON_VERSION: deployInput.pythonVersion,
     };
   }
 }
@@ -283,13 +283,13 @@ export class TensorFlowDeployment extends BaseSageMakerDeployment {
     super(MLFramework.TENSORFLOW, config, logger, service, model);
   }
 
-  protected getFrameworkEnvironment(): Record<string, string> {
+  protected getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string> {
     return {
-      SAGEMAKER_PROGRAM: this.config.entryPoint,
+      SAGEMAKER_PROGRAM: deployInput.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
-      SAGEMAKER_FRAMEWORK_VERSION: this.config.frameworkVersion,
+      SAGEMAKER_FRAMEWORK_VERSION: deployInput.frameworkVersion,
       SAGEMAKER_FRAMEWORK_MODULE: "sagemaker.tensorflow.serving:main",
-      SAGEMAKER_PYTHON_VERSION: this.config.pythonVersion,
+      SAGEMAKER_PYTHON_VERSION: deployInput.pythonVersion,
     };
   }
 }
@@ -300,13 +300,13 @@ export class HuggingFaceDeployment extends BaseSageMakerDeployment {
     super(MLFramework.HUGGINGFACE, config, logger, service, model);
   }
 
-  protected getFrameworkEnvironment(): Record<string, string> {
+  protected getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string> {
     return {
-      SAGEMAKER_PROGRAM: this.config.entryPoint,
+      SAGEMAKER_PROGRAM: deployInput.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
-      SAGEMAKER_FRAMEWORK_VERSION: this.config.frameworkVersion,
+      SAGEMAKER_FRAMEWORK_VERSION: deployInput.frameworkVersion,
       SAGEMAKER_FRAMEWORK_MODULE: "sagemaker.huggingface.serving:main",
-      SAGEMAKER_PYTHON_VERSION: this.config.pythonVersion,
+      SAGEMAKER_PYTHON_VERSION: deployInput.pythonVersion,
       SAGEMAKER_HF_TASK: "text-classification", // Can be made configurable
     };
   }
