@@ -65,6 +65,7 @@ export abstract class BaseSageMakerDeployment {
     service: string,
     model: string
   ) {
+    this.framework = framework;
     this.config = config;
     this.logger = logger;
     this.service = service;

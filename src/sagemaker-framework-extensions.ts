@@ -298,13 +298,13 @@ export class CustomFrameworkTraining extends SageMakerTraining {
 export class NeuralForecastTraining extends CustomFrameworkTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
   constructor(
-    config: TrainingConfig,
+    config: Omit<TrainingConfig, 'framework'>,
     sourceDir: string,
     accountId: string,
     logger: Logger,
     version = "1.7.1"
   ) {
-    super(config, sourceDir, logger);
+    super({ framework: MLFramework.PYTORCH, ...config }, sourceDir, logger);
 
     this.defaultFrameworkConfig = {
       imageUri: `${accountId}.dkr.ecr.${config.region}.amazonaws.com/sagemaker-neuralforecast-training:${version}`,
