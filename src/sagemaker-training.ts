@@ -357,11 +357,14 @@ export class SageMakerTraining {
     metricDefinitions: MetricDefinition[] = [],
     monitor: boolean = false
   ): Promise<TrainingMetadata> {
-    this.logger.log("Starting training job...");
-    this.logger.log("Resource config:", resourceConfig);
-    this.logger.log("Hyperparameters:", hyperParameters);
-    this.logger.log("Input data:", inputData);
-    this.logger.log("Metric definitions:", metricDefinitions);
+    this.logger.log("Training job input parameters:", {
+      frameworkConfig,
+      resourceConfig,
+      hyperParameters,
+      inputData,
+      metricDefinitions,
+      monitor,
+    });
     try {
       const trainingJobName = `${this.config.service}-${
         this.config.model

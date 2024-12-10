@@ -77,7 +77,9 @@ export abstract class BaseSageMakerDeployment {
     this.imageUriProvider = new ImageUriProvider(config.region);
   }
 
-  protected abstract getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string>;
+  protected abstract getFrameworkEnvironment(
+    deployInput: ModelDeploymentInput
+  ): Record<string, string>;
 
   protected generateResourceId(): string {
     return `${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -119,23 +121,33 @@ export abstract class BaseSageMakerDeployment {
     environment: Record<string, string>;
   }) {
     this.logger.log(`Creating model with name: ${params.modelName}`);
-    await this.client.send(
-      new CreateModelCommand({
-        ModelName: params.modelName,
-        ExecutionRoleArn: this.config.role,
-        PrimaryContainer: {
-          Image: params.imageUri,
-          ModelDataUrl: params.modelPath,
-          Environment: params.environment,
-        },
-        Tags: [
-          {
-            Key: "Framework",
-            Value: this.framework,
+    try {
+      await this.client.send(
+        new CreateModelCommand({
+          ModelName: params.modelName,
+          ExecutionRoleArn: this.config.role,
+          PrimaryContainer: {
+            Image: params.imageUri,
+            ModelDataUrl: params.modelPath,
+            Environment: params.environment,
           },
-        ],
-      })
-    );
+          Tags: [
+            {
+              Key: "Framework",
+              Value: this.framework,
+            },
+          ],
+        })
+      );
+    } catch (error) {
+      if ((error as any).message.includes("already exist")) {
+        this.logger.log(
+          `Model ${params.modelName} already exists, continuing...`
+        );
+      } else {
+        throw error;
+      }
+    }
   }
 
   public async deploy(
@@ -148,20 +160,26 @@ export abstract class BaseSageMakerDeployment {
   ): Promise<DeploymentResult> {
     try {
       const resourceId = this.generateResourceId();
-      const modelName = `${(deployInput.trainingJobName ?? this.getModelName(resourceId))}-model`;
-      const configName = `${deployInput.trainingJobName ?? this.getConfigName(resourceId)}-config`;
+      const modelName = `${
+        deployInput.trainingJobName ?? this.getModelName(resourceId)
+      }-model`;
+      const configName = `${
+        deployInput.trainingJobName ?? this.getConfigName(resourceId)
+      }-config`;
       const endpointName = this.getEndpointName();
       const modelPath = this.getS3ModelPath(deployInput);
 
       await this.createModel({
         modelName,
         modelPath,
-        imageUri: deployInput.imageUri ?? this.imageUriProvider.getDefaultImageUri(
-          this.framework,
-          deployInput.frameworkVersion,
-          deployInput.pythonVersion,
-          deployInput.useGpu
-        ),
+        imageUri:
+          deployInput.imageUri ??
+          this.imageUriProvider.getDefaultImageUri(
+            this.framework,
+            deployInput.frameworkVersion,
+            deployInput.pythonVersion,
+            deployInput.useGpu
+          ),
         environment: {
           ...(this.getFrameworkEnvironment(deployInput) || {}),
           ...(this.config.environmentVariables || {}),
@@ -170,31 +188,41 @@ export abstract class BaseSageMakerDeployment {
       });
 
       this.logger.log(`Creating endpoint config with name: ${configName}`);
-      await this.client.send(
-        new CreateEndpointConfigCommand({
-          EndpointConfigName: configName,
-          ProductionVariants: [
-            {
-              VariantName: "AllTraffic",
-              ModelName: modelName,
-              ServerlessConfig: {
-                MemorySizeInMB: serverlessConfig.memorySizeInMb,
-                MaxConcurrency: serverlessConfig.maxConcurrency,
+      try {
+        await this.client.send(
+          new CreateEndpointConfigCommand({
+            EndpointConfigName: configName,
+            ProductionVariants: [
+              {
+                VariantName: "AllTraffic",
+                ModelName: modelName,
+                ServerlessConfig: {
+                  MemorySizeInMB: serverlessConfig.memorySizeInMb,
+                  MaxConcurrency: serverlessConfig.maxConcurrency,
+                },
               },
-            },
-          ],
-          Tags: [
-            {
-              Key: "Service",
-              Value: this.service,
-            },
-            {
-              Key: "Model",
-              Value: this.model,
-            },
-          ],
-        })
-      );
+            ],
+            Tags: [
+              {
+                Key: "Service",
+                Value: this.service,
+              },
+              {
+                Key: "Model",
+                Value: this.model,
+              },
+            ],
+          })
+        );
+      } catch (error) {
+        if ((error as any).message.includes("already exist")) {
+          this.logger.log(
+            `Endpoint config ${configName} already exists, continuing...`
+          );
+        } else {
+          throw error;
+        }
+      }
 
       const exists = await this.endpointExists(endpointName);
 
@@ -252,7 +280,10 @@ export abstract class BaseSageMakerDeployment {
       );
       return true;
     } catch (error) {
-      if ((error as any).name === "ResourceNotFound") {
+      if (
+        (error as any).name === "ResourceNotFound" ||
+        (error as any).message.includes("Could not find endpoint")
+      ) {
         return false;
       }
       throw error;
@@ -260,14 +291,19 @@ export abstract class BaseSageMakerDeployment {
   }
 }
 
-
 export class PyTorchDeployment extends BaseSageMakerDeployment {
-  constructor(config: FrameworkDeployConfig, logger: Logger, service: string, model: string) {
+  constructor(
+    config: FrameworkDeployConfig,
+    logger: Logger,
+    service: string,
+    model: string
+  ) {
     super(MLFramework.PYTORCH, config, logger, service, model);
-    
   }
 
-  protected getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string> {
+  protected getFrameworkEnvironment(
+    deployInput: ModelDeploymentInput
+  ): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: deployInput.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
@@ -278,13 +314,19 @@ export class PyTorchDeployment extends BaseSageMakerDeployment {
   }
 }
 
-
 export class TensorFlowDeployment extends BaseSageMakerDeployment {
-  constructor(config: FrameworkDeployConfig, logger: Logger, service: string, model: string) {
+  constructor(
+    config: FrameworkDeployConfig,
+    logger: Logger,
+    service: string,
+    model: string
+  ) {
     super(MLFramework.TENSORFLOW, config, logger, service, model);
   }
 
-  protected getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string> {
+  protected getFrameworkEnvironment(
+    deployInput: ModelDeploymentInput
+  ): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: deployInput.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
@@ -295,13 +337,19 @@ export class TensorFlowDeployment extends BaseSageMakerDeployment {
   }
 }
 
-
 export class HuggingFaceDeployment extends BaseSageMakerDeployment {
-  constructor(config: FrameworkDeployConfig, logger: Logger, service: string, model: string) {
+  constructor(
+    config: FrameworkDeployConfig,
+    logger: Logger,
+    service: string,
+    model: string
+  ) {
     super(MLFramework.HUGGINGFACE, config, logger, service, model);
   }
 
-  protected getFrameworkEnvironment(deployInput: ModelDeploymentInput): Record<string, string> {
+  protected getFrameworkEnvironment(
+    deployInput: ModelDeploymentInput
+  ): Record<string, string> {
     return {
       SAGEMAKER_PROGRAM: deployInput.entryPoint,
       SAGEMAKER_SUBMIT_DIRECTORY: "/opt/ml/model/code",
