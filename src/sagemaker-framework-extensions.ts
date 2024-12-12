@@ -345,6 +345,7 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
       [key: string]: any;
     },
     data: Buffer | string,
+    metricDefinitions?: MetricDefinition[],
     format: DataFormat = DataFormat.JSON,
     monitor: boolean = false
   ): Promise<TrainingMetadata> {
@@ -359,7 +360,7 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
       resourceConfig,
       hyperParameters,
       inputConfig,
-      undefined,
+      metricDefinitions,
       monitor
     );
   }
