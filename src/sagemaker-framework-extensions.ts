@@ -1,4 +1,6 @@
 import { SageMakerTraining } from "./sagemaker-training";
+import { SageMakerClient } from "@aws-sdk/client-sagemaker";
+import { S3Client } from "@aws-sdk/client-s3";
 import {
   PyTorchHyperParameters,
   TensorFlowHyperParameters,
@@ -22,6 +24,8 @@ export class PyTorchTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
+    sagemakerClient: SageMakerClient,
+    s3Client: S3Client,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -32,7 +36,7 @@ export class PyTorchTraining extends SageMakerTraining {
     const processor = useGpu ? "gpu" : "cpu";
     const imageUri = `763104351884.dkr.ecr.${config.region}.amazonaws.com/pytorch-training:${frameworkVersion}-${processor}-${pythonVersion}`;
 
-    super({ framework: MLFramework.PYTORCH, ...config }, sourceDir, logger);
+    super(sagemakerClient, s3Client, { framework: MLFramework.PYTORCH, ...config }, sourceDir, logger);
 
     this.defaultFrameworkConfig = {
       frameworkVersion,
@@ -73,6 +77,8 @@ export class TensorFlowTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
+    sagemakerClient: SageMakerClient,
+    s3Client: S3Client,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -83,7 +89,7 @@ export class TensorFlowTraining extends SageMakerTraining {
     const processor = useGpu ? "gpu" : "cpu";
     const imageUri = `763104351884.dkr.ecr.${config.region}.amazonaws.com/tensorflow-training:${frameworkVersion}-${processor}-${pythonVersion}`;
 
-    super({ framework: MLFramework.TENSORFLOW, ...config }, sourceDir, logger);
+    super(sagemakerClient, s3Client, { framework: MLFramework.TENSORFLOW, ...config }, sourceDir, logger);
 
     this.defaultFrameworkConfig = {
       frameworkVersion,
@@ -124,6 +130,8 @@ export class XGBoostTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
+    sagemakerClient: SageMakerClient,
+    s3Client: S3Client,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -132,7 +140,7 @@ export class XGBoostTraining extends SageMakerTraining {
   ) {
     const imageUri = `683313688378.dkr.ecr.${config.region}.amazonaws.com/sagemaker-xgboost:${frameworkVersion}`;
 
-    super({ framework: MLFramework.XGBOOST, ...config }, sourceDir, logger);
+    super(sagemakerClient, s3Client, { framework: MLFramework.XGBOOST, ...config }, sourceDir, logger);
 
     this.defaultFrameworkConfig = {
       frameworkVersion,
@@ -172,6 +180,8 @@ export class SklearnTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
+    sagemakerClient: SageMakerClient,
+    s3Client: S3Client,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -180,7 +190,7 @@ export class SklearnTraining extends SageMakerTraining {
   ) {
     const imageUri = `683313688378.dkr.ecr.${config.region}.amazonaws.com/sagemaker-scikit-learn:${frameworkVersion}`;
 
-    super({ framework: MLFramework.SKLEARN, ...config }, sourceDir, logger);
+    super(sagemakerClient, s3Client, { framework: MLFramework.SKLEARN, ...config }, sourceDir, logger);
 
     this.defaultFrameworkConfig = {
       frameworkVersion,
@@ -220,6 +230,8 @@ export class HuggingFaceTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
+    sagemakerClient: SageMakerClient,
+    s3Client: S3Client,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -230,7 +242,7 @@ export class HuggingFaceTraining extends SageMakerTraining {
     const processor = useGpu ? "gpu" : "cpu";
     const imageUri = `763104351884.dkr.ecr.${config.region}.amazonaws.com/huggingface-pytorch-training:${frameworkVersion}-${processor}-${pythonVersion}`;
 
-    super({ framework: MLFramework.HUGGINGFACE, ...config }, sourceDir, logger);
+    super(sagemakerClient, s3Client, { framework: MLFramework.HUGGINGFACE, ...config }, sourceDir, logger);
 
     this.defaultFrameworkConfig = {
       frameworkVersion,
@@ -264,8 +276,8 @@ export class HuggingFaceTraining extends SageMakerTraining {
 }
 
 export class CustomFrameworkTraining extends SageMakerTraining {
-  constructor(config: TrainingConfig, sourceDir: string, logger: Logger) {
-    super(config, sourceDir, logger);
+  constructor(sagemakerClient: SageMakerClient, s3Client: S3Client, config: TrainingConfig, sourceDir: string, logger: Logger) {
+    super(sagemakerClient, s3Client, config, sourceDir, logger);
   }
 
   // We can add custom metrics specific to your framework
@@ -298,13 +310,15 @@ export class CustomFrameworkTraining extends SageMakerTraining {
 export class NeuralForecastTraining extends CustomFrameworkTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
   constructor(
+    sagemakerClient: SageMakerClient,
+    s3Client: S3Client,
     config: Omit<TrainingConfig, 'framework'>,
     sourceDir: string,
     accountId: string,
     logger: Logger,
     version = "1.7.1"
   ) {
-    super({ framework: MLFramework.PYTORCH, ...config }, sourceDir, logger);
+    super(sagemakerClient, s3Client, { framework: MLFramework.PYTORCH, ...config }, sourceDir, logger);
 
     this.defaultFrameworkConfig = {
       imageUri: `${accountId}.dkr.ecr.${config.region}.amazonaws.com/sagemaker-neuralforecast-training:${version}`,

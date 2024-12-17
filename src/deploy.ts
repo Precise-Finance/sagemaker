@@ -7,6 +7,7 @@ import {
   UpdateEndpointCommand,
   DescribeEndpointCommand,
 } from "@aws-sdk/client-sagemaker";
+import { S3Client } from "@aws-sdk/client-s3";
 import {
   DeploymentResult,
   FrameworkDeployConfig,
@@ -59,6 +60,7 @@ export abstract class BaseSageMakerDeployment {
   protected readonly model: string;
 
   constructor(
+    client: SageMakerClient,
     framework: MLFramework,
     config: FrameworkDeployConfig,
     logger: Logger,
@@ -70,10 +72,7 @@ export abstract class BaseSageMakerDeployment {
     this.logger = logger;
     this.service = service;
     this.model = model;
-    this.client = new SageMakerClient({
-      region: config.region,
-      credentials: config.credentials,
-    });
+    this.client = client;
     this.imageUriProvider = new ImageUriProvider(config.region);
   }
 
@@ -293,12 +292,13 @@ export abstract class BaseSageMakerDeployment {
 
 export class PyTorchDeployment extends BaseSageMakerDeployment {
   constructor(
+    client: SageMakerClient,
     config: FrameworkDeployConfig,
     logger: Logger,
     service: string,
     model: string
   ) {
-    super(MLFramework.PYTORCH, config, logger, service, model);
+    super(client, MLFramework.PYTORCH, config, logger, service, model);
   }
 
   protected getFrameworkEnvironment(
@@ -316,12 +316,13 @@ export class PyTorchDeployment extends BaseSageMakerDeployment {
 
 export class TensorFlowDeployment extends BaseSageMakerDeployment {
   constructor(
+    client: SageMakerClient,
     config: FrameworkDeployConfig,
     logger: Logger,
     service: string,
     model: string
   ) {
-    super(MLFramework.TENSORFLOW, config, logger, service, model);
+    super(client, MLFramework.TENSORFLOW, config, logger, service, model);
   }
 
   protected getFrameworkEnvironment(
@@ -339,12 +340,13 @@ export class TensorFlowDeployment extends BaseSageMakerDeployment {
 
 export class HuggingFaceDeployment extends BaseSageMakerDeployment {
   constructor(
+    client: SageMakerClient,
     config: FrameworkDeployConfig,
     logger: Logger,
     service: string,
     model: string
   ) {
-    super(MLFramework.HUGGINGFACE, config, logger, service, model);
+    super(client, MLFramework.HUGGINGFACE, config, logger, service, model);
   }
 
   protected getFrameworkEnvironment(

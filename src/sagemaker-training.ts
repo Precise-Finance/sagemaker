@@ -107,9 +107,12 @@ export class SageMakerTraining {
   private logger: Logger;
 
   constructor(
+    sagemakerClient: SageMakerClient,
+    s3Client: S3Client,
     config: TrainingConfig,
     sourceDir: string,
-    logger: Logger
+    logger: Logger,
+    sm: SageMaker
   ) {
     this.logger = logger;
     this.logger.log("Initializing SageMakerTraining with config:", config);
@@ -120,17 +123,8 @@ export class SageMakerTraining {
       config.framework
     );
 
-    const sharedConfig = {
-      region: config.region,
-      credentials: {
-        accessKeyId: config.credentials.accessKeyId,
-        secretAccessKey: config.credentials.secretAccessKey,
-        sessionToken: config.credentials.sessionToken,
-      },
-    };
-
-    this.sagemakerClient = new SageMakerClient(sharedConfig);
-    this.s3Client = new S3Client(sharedConfig);
+    this.sagemakerClient = sagemakerClient;
+    this.s3Client = s3Client;
   }
 
   private cleanupTempFiles(filePath: string) {

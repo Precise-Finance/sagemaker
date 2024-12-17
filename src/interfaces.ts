@@ -1,19 +1,13 @@
 import {
+  SageMakerClient,
   TrainingJobStatus,
   TrainingInstanceType,
 } from "@aws-sdk/client-sagemaker";
-
-// Core AWS interfaces
-export interface AWSCredentials {
-  accessKeyId: string;
-  secretAccessKey: string;
-  sessionToken?: string;
-}
+import { S3Client } from "@aws-sdk/client-s3";
 
 // Base configurations - AWS level only
 export interface BaseConfig {
   region: string;
-  credentials: AWSCredentials;
   bucket: string;
   role: string;
 }
@@ -178,4 +172,89 @@ export interface Logger {
   warn(message?: any, ...optionalParams: any[]): void;
   info(message?: any, ...optionalParams: any[]): void;
   debug(message?: any, ...optionalParams: any[]): void;
+}
+
+// Inference related interfaces
+export interface InferenceConfig {
+  maxRetries?: number;
+  timeoutMs?: number;
+  batchSize?: number;
+  validateResponse?: boolean;
+  metricsEnabled?: boolean;
+}
+
+export interface InferenceRequest {
+  contentType?: string;
+  accept?: string;
+  customAttributes?: Record<string, string>;
+  transformInput?: (payload: any) => any;
+  transformOutput?: (response: any) => any;
+}
+
+export interface InferenceMetrics {
+  timestamp: number;
+  latencyMs: number;
+  success: boolean;
+  endpointName: string;
+  error?: string;
+}
+
+export type MetricsCallback = (metrics: InferenceMetrics) => void;
+
+export interface SageMakerInferenceConfig extends BaseConfig {
+  defaultContentType?: string;
+  defaultAccept?: string;
+  defaultCustomAttributes?: Record<string, string>;
+  retry?: {
+    maxAttempts: number;
+    timeoutMs: number;
+    backoffMultiplier?: number;
+  };
+  monitoring?: {
+    enabled: boolean;
+    metricsCallback?: MetricsCallback;
+  };
+  validation?: {
+    enabled: boolean;
+    customValidator?: (response: any) => boolean;
+  };
+  batch?: {
+    enabled: boolean;
+    maxBatchSize: number;
+    concurrency?: number;
+  };
+}
+
+export interface InferenceTargetConfig {
+  targetModel?: string;          // For multi-model endpoints
+  targetVariant?: string;        // For multiple production variants (A/B testing)
+  targetContainerHostname?: string;  // For multi-container endpoints
+  inferenceId?: string;          // Unique tracking ID
+  enableExplanations?: string;   // For model explainability
+  inferenceComponentName?: string;  // For multi-component endpoints
+  sessionId?: string;            // For stateful inference
+}
+
+export interface InferenceCallOptions extends InferenceRequest, InferenceTargetConfig {
+  retry?: {
+    maxAttempts?: number;
+    timeoutMs?: number;
+    backoffMultiplier?: number;
+  };
+  validation?: {
+    enabled?: boolean;
+    customValidator?: (response: any) => boolean;
+  };
+  monitoring?: {
+    enabled?: boolean;
+    metricsCallback?: MetricsCallback;
+  };
+}
+
+export interface InferenceResponse<T = any> {
+  data: T;
+  inferenceId?: string;
+  explanation?: any;
+  targetModel?: string;
+  targetVariant?: string;
 }
