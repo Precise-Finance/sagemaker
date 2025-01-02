@@ -64,6 +64,7 @@ export interface ResourceConfig {
   volumeSizeGB: number;
   maxRuntimeSeconds?: number;
   maxPendingSeconds?: number;
+  environmentVariables?: Record<string, string>;
 }
 
 export interface MetricDefinition {

@@ -1,6 +1,6 @@
 {
   "name": "@precise-finance/sagemaker",
-  "version": "2.0.3",
+  "version": "2.0.10",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
@@ -18,14 +18,14 @@
   },
   "homepage": "https://github.com/Precise-Finance/sagemaker#readme",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.x",
-    "@aws-sdk/client-sagemaker": "^3.x",
-    "@aws-sdk/client-sagemaker-runtime": "^3.709.0",
-    "@aws-sdk/credential-providers": "^3.699.0",
-    "@aws-sdk/lib-storage": "^3.x",
     "archiver": "^5.x"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/client-sagemaker": "3.714.0",
+    "@aws-sdk/client-sagemaker-runtime": "3.714.0",
+    "@aws-sdk/credential-providers": "3.310.0",
+    "@aws-sdk/lib-storage": "3.310.0",
     "@types/archiver": "^5.x",
     "@types/jest": "^29.5.0",
     "@types/node": "^16.x",
@@ -35,6 +35,13 @@
     "reflect-metadata": "^0.1.13",
     "ts-jest": "^29.0.5",
     "typescript": "^5.2.2"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.x",
+    "@aws-sdk/client-sagemaker": "^3.x",
+    "@aws-sdk/client-sagemaker-runtime": "^3.x",
+    "@aws-sdk/credential-providers": "^3.x",
+    "@aws-sdk/lib-storage": "^3.x"
   },
   "jest": {
     "moduleFileExtensions": [

@@ -1,13 +1,12 @@
 // src/lib/base-deployment.ts
 import {
-  SageMakerClient,
+  SageMaker,
   CreateModelCommand,
   CreateEndpointConfigCommand,
   CreateEndpointCommand,
   UpdateEndpointCommand,
   DescribeEndpointCommand,
 } from "@aws-sdk/client-sagemaker";
-import { S3Client } from "@aws-sdk/client-s3";
 import {
   DeploymentResult,
   FrameworkDeployConfig,
@@ -51,7 +50,7 @@ export class ImageUriProvider {
 }
 
 export abstract class BaseSageMakerDeployment {
-  protected client: SageMakerClient;
+  protected client: SageMaker;
   protected readonly framework: MLFramework;
   protected readonly config: FrameworkDeployConfig;
   protected readonly imageUriProvider: ImageUriProvider;
@@ -60,7 +59,7 @@ export abstract class BaseSageMakerDeployment {
   protected readonly model: string;
 
   constructor(
-    client: SageMakerClient,
+    client: SageMaker,
     framework: MLFramework,
     config: FrameworkDeployConfig,
     logger: Logger,
@@ -121,23 +120,21 @@ export abstract class BaseSageMakerDeployment {
   }) {
     this.logger.log(`Creating model with name: ${params.modelName}`);
     try {
-      await this.client.send(
-        new CreateModelCommand({
-          ModelName: params.modelName,
-          ExecutionRoleArn: this.config.role,
-          PrimaryContainer: {
-            Image: params.imageUri,
-            ModelDataUrl: params.modelPath,
-            Environment: params.environment,
+      await this.client.createModel({
+        ModelName: params.modelName,
+        ExecutionRoleArn: this.config.role,
+        PrimaryContainer: {
+          Image: params.imageUri,
+          ModelDataUrl: params.modelPath,
+          Environment: params.environment,
+        },
+        Tags: [
+          {
+            Key: "Framework",
+            Value: this.framework,
           },
-          Tags: [
-            {
-              Key: "Framework",
-              Value: this.framework,
-            },
-          ],
-        })
-      );
+        ],
+      });
     } catch (error) {
       if ((error as any).message.includes("already exist")) {
         this.logger.log(
@@ -146,6 +143,21 @@ export abstract class BaseSageMakerDeployment {
       } else {
         throw error;
       }
+    }
+  }
+
+  // Define custom error classes
+  class InProgressEndpointUpdateError extends Error {
+    constructor(endpointName: string) {
+      super(`Cannot update in-progress endpoint: ${endpointName}`);
+      this.name = "InProgressEndpointUpdateError";
+    }
+  }
+
+  class EndpointConfigInUseError extends Error {
+    constructor(endpointName: string, configName: string) {
+      super(`Cannot update endpoint ${endpointName} with the currently in use endpoint configuration ${configName}`);
+      this.name = "EndpointConfigInUseError";
     }
   }
 
@@ -188,31 +200,29 @@ export abstract class BaseSageMakerDeployment {
 
       this.logger.log(`Creating endpoint config with name: ${configName}`);
       try {
-        await this.client.send(
-          new CreateEndpointConfigCommand({
-            EndpointConfigName: configName,
-            ProductionVariants: [
-              {
-                VariantName: "AllTraffic",
-                ModelName: modelName,
-                ServerlessConfig: {
-                  MemorySizeInMB: serverlessConfig.memorySizeInMb,
-                  MaxConcurrency: serverlessConfig.maxConcurrency,
-                },
+        await this.client.createEndpointConfig({
+          EndpointConfigName: configName,
+          ProductionVariants: [
+            {
+              VariantName: "AllTraffic",
+              ModelName: modelName,
+              ServerlessConfig: {
+                MemorySizeInMB: serverlessConfig.memorySizeInMb,
+                MaxConcurrency: serverlessConfig.maxConcurrency,
               },
-            ],
-            Tags: [
-              {
-                Key: "Service",
-                Value: this.service,
-              },
-              {
-                Key: "Model",
-                Value: this.model,
-              },
-            ],
-          })
-        );
+            },
+          ],
+          Tags: [
+            {
+              Key: "Service",
+              Value: this.service,
+            },
+            {
+              Key: "Model",
+              Value: this.model,
+            },
+          ],
+        });
       } catch (error) {
         if ((error as any).message.includes("already exist")) {
           this.logger.log(
@@ -227,36 +237,44 @@ export abstract class BaseSageMakerDeployment {
 
       if (exists) {
         this.logger.log(`Updating existing endpoint: ${endpointName}`);
-        await this.client.send(
-          new UpdateEndpointCommand({
+        try {
+          await this.client.updateEndpoint({
             EndpointName: endpointName,
             EndpointConfigName: configName,
-          })
-        );
+          });
 
-        return {
-          modelName,
-          endpointName,
-          status: "Updated",
-        };
+          return {
+            modelName,
+            endpointName,
+            status: "Updated",
+          };
+        } catch (error) {
+          if ((error as any).message.includes("Cannot update in-progress endpoint")) {
+            this.logger.error(`Cannot update in-progress endpoint: ${endpointName}`);
+            throw new InProgressEndpointUpdateError(endpointName);
+          } else if ((error as any).message.includes("currently in use endpoint configuration")) {
+            this.logger.error(`Cannot update endpoint ${endpointName} with the currently in use endpoint configuration ${configName}`);
+            throw new EndpointConfigInUseError(endpointName, configName);
+          } else {
+            throw error;
+          }
+        }
       } else {
         this.logger.log(`Creating new endpoint: ${endpointName}`);
-        await this.client.send(
-          new CreateEndpointCommand({
-            EndpointName: endpointName,
-            EndpointConfigName: configName,
-            Tags: [
-              {
-                Key: "Service",
-                Value: this.service,
-              },
-              {
-                Key: "Model",
-                Value: this.model,
-              },
-            ],
-          })
-        );
+        await this.client.createEndpoint({
+          EndpointName: endpointName,
+          EndpointConfigName: configName,
+          Tags: [
+            {
+              Key: "Service",
+              Value: this.service,
+            },
+            {
+              Key: "Model",
+              Value: this.model,
+            },
+          ],
+        });
 
         return {
           modelName,
@@ -272,11 +290,9 @@ export abstract class BaseSageMakerDeployment {
 
   private async endpointExists(endpointName: string): Promise<boolean> {
     try {
-      await this.client.send(
-        new DescribeEndpointCommand({
-          EndpointName: endpointName,
-        })
-      );
+      await this.client.describeEndpoint({
+        EndpointName: endpointName,
+      });
       return true;
     } catch (error) {
       if (
@@ -292,7 +308,7 @@ export abstract class BaseSageMakerDeployment {
 
 export class PyTorchDeployment extends BaseSageMakerDeployment {
   constructor(
-    client: SageMakerClient,
+    client: SageMaker,
     config: FrameworkDeployConfig,
     logger: Logger,
     service: string,
@@ -316,7 +332,7 @@ export class PyTorchDeployment extends BaseSageMakerDeployment {
 
 export class TensorFlowDeployment extends BaseSageMakerDeployment {
   constructor(
-    client: SageMakerClient,
+    client: SageMaker,
     config: FrameworkDeployConfig,
     logger: Logger,
     service: string,
@@ -340,7 +356,7 @@ export class TensorFlowDeployment extends BaseSageMakerDeployment {
 
 export class HuggingFaceDeployment extends BaseSageMakerDeployment {
   constructor(
-    client: SageMakerClient,
+    client: SageMaker,
     config: FrameworkDeployConfig,
     logger: Logger,
     service: string,

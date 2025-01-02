@@ -1,6 +1,6 @@
 import { SageMakerTraining } from "./sagemaker-training";
-import { SageMakerClient } from "@aws-sdk/client-sagemaker";
-import { S3Client } from "@aws-sdk/client-s3";
+import { SageMaker } from "@aws-sdk/client-sagemaker";
+import { S3 } from "@aws-sdk/client-s3";
 import {
   PyTorchHyperParameters,
   TensorFlowHyperParameters,
@@ -24,8 +24,8 @@ export class PyTorchTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
-    sagemakerClient: SageMakerClient,
-    s3Client: S3Client,
+    sagemakerClient: SageMaker,
+    s3Client: S3,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -51,7 +51,8 @@ export class PyTorchTraining extends SageMakerTraining {
     hyperParameters: PyTorchHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: "loss", Regex: "Loss: ([0-9\\.]+)" },
@@ -65,7 +66,8 @@ export class PyTorchTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
-      monitor
+      monitor,
+      tags
     );
   }
 }
@@ -77,8 +79,8 @@ export class TensorFlowTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
-    sagemakerClient: SageMakerClient,
-    s3Client: S3Client,
+    sagemakerClient: SageMaker,
+    s3Client: S3,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -104,7 +106,8 @@ export class TensorFlowTraining extends SageMakerTraining {
     hyperParameters: TensorFlowHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: "loss", Regex: "loss: ([0-9\\.]+)" },
@@ -118,7 +121,8 @@ export class TensorFlowTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
-      monitor
+      monitor,
+      tags
     );
   }
 }
@@ -130,8 +134,8 @@ export class XGBoostTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
-    sagemakerClient: SageMakerClient,
-    s3Client: S3Client,
+    sagemakerClient: SageMaker,
+    s3Client: S3,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -155,7 +159,8 @@ export class XGBoostTraining extends SageMakerTraining {
     hyperParameters: XGBoostHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: "validation:rmse", Regex: "validation-rmse:([0-9\\.]+)" },
@@ -168,7 +173,8 @@ export class XGBoostTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
-      monitor
+      monitor,
+      tags
     );
   }
 }
@@ -180,8 +186,8 @@ export class SklearnTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
-    sagemakerClient: SageMakerClient,
-    s3Client: S3Client,
+    sagemakerClient: SageMaker,
+    s3Client: S3,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -205,7 +211,8 @@ export class SklearnTraining extends SageMakerTraining {
     hyperParameters: SklearnHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: "accuracy", Regex: "accuracy: ([0-9\\.]+)" },
@@ -218,7 +225,8 @@ export class SklearnTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
-      monitor
+      monitor,
+      tags
     );
   }
 }
@@ -230,8 +238,8 @@ export class HuggingFaceTraining extends SageMakerTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
 
   constructor(
-    sagemakerClient: SageMakerClient,
-    s3Client: S3Client,
+    sagemakerClient: SageMaker,
+    s3Client: S3,
     config: Omit<TrainingConfig, "framework">,
     sourceDir: string,
     logger: Logger,
@@ -257,7 +265,8 @@ export class HuggingFaceTraining extends SageMakerTraining {
     hyperParameters: HuggingFaceHyperParameters,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     const defaultMetrics: MetricDefinition[] = [
       { Name: "loss", Regex: "loss: ([0-9\\.]+)" },
@@ -270,13 +279,14 @@ export class HuggingFaceTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
-      monitor
+      monitor,
+      tags
     );
   }
 }
 
 export class CustomFrameworkTraining extends SageMakerTraining {
-  constructor(sagemakerClient: SageMakerClient, s3Client: S3Client, config: TrainingConfig, sourceDir: string, logger: Logger) {
+  constructor(sagemakerClient: SageMaker, s3Client: S3, config: TrainingConfig, sourceDir: string, logger: Logger) {
     super(sagemakerClient, s3Client, config, sourceDir, logger);
   }
 
@@ -287,7 +297,8 @@ export class CustomFrameworkTraining extends SageMakerTraining {
     hyperParameters: Record<string, any>,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     // Default metrics for NeuralForecast
     const defaultMetrics: MetricDefinition[] = [
@@ -301,7 +312,8 @@ export class CustomFrameworkTraining extends SageMakerTraining {
       hyperParameters,
       inputData,
       metricDefinitions || defaultMetrics,
-      monitor
+      monitor,
+      tags
     );
   }
 }
@@ -310,8 +322,8 @@ export class CustomFrameworkTraining extends SageMakerTraining {
 export class NeuralForecastTraining extends CustomFrameworkTraining {
   private readonly defaultFrameworkConfig: FrameworkConfig;
   constructor(
-    sagemakerClient: SageMakerClient,
-    s3Client: S3Client,
+    sagemakerClient: SageMaker,
+    s3Client: S3,
     config: Omit<TrainingConfig, 'framework'>,
     sourceDir: string,
     accountId: string,
@@ -338,7 +350,8 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
     },
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions?: MetricDefinition[],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     return super.train(
       { ...this.defaultFrameworkConfig, ...frameworkConfig },
@@ -346,7 +359,8 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
       hyperParameters,
       inputData,
       metricDefinitions,
-      monitor
+      monitor,
+      tags
     );
   }
 
@@ -361,7 +375,8 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
     data: Buffer | string,
     metricDefinitions?: MetricDefinition[],
     format: DataFormat = DataFormat.JSON,
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     const inputConfig: InputDataConfig = {
       data,
@@ -375,7 +390,8 @@ export class NeuralForecastTraining extends CustomFrameworkTraining {
       hyperParameters,
       inputConfig,
       metricDefinitions,
-      monitor
+      monitor,
+      tags
     );
   }
 }

@@ -1,5 +1,5 @@
 import {
-  SageMakerClient,
+  SageMaker,
   CreateTrainingJobCommand,
   DescribeTrainingJobCommand,
   CreateTrainingJobCommandInput,
@@ -7,7 +7,7 @@ import {
   TrainingInstanceType,
   Channel,
 } from "@aws-sdk/client-sagemaker";
-import { S3Client } from "@aws-sdk/client-s3";
+import { S3 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import * as fs from "fs";
 import archiver from "archiver";
@@ -99,20 +99,19 @@ class FrameworkHandler {
  * Main SageMaker training class that supports multiple ML frameworks
  */
 export class SageMakerTraining {
-  private sagemakerClient: SageMakerClient;
-  private s3Client: S3Client;
+  private sagemakerClient: SageMaker;
+  private s3Client: S3;
   private readonly config: TrainingConfig;
   private readonly sourceDir: string;
   private readonly frameworkSpecificConfig: FrameworkSpecificConfig;
   private logger: Logger;
 
   constructor(
-    sagemakerClient: SageMakerClient,
-    s3Client: S3Client,
+    sagemakerClient: SageMaker,
+    s3Client: S3,
     config: TrainingConfig,
     sourceDir: string,
-    logger: Logger,
-    sm: SageMaker
+    logger: Logger
   ) {
     this.logger = logger;
     this.logger.log("Initializing SageMakerTraining with config:", config);
@@ -198,11 +197,9 @@ export class SageMakerTraining {
   ): Promise<TrainingJobStatus> {
     this.logger.log(`Monitoring training job: ${trainingJobName}`);
     while (true) {
-      const response = await this.sagemakerClient.send(
-        new DescribeTrainingJobCommand({
-          TrainingJobName: trainingJobName,
-        })
-      );
+      const response = await this.sagemakerClient.describeTrainingJob({
+        TrainingJobName: trainingJobName,
+      });
 
       const status = response.TrainingJobStatus as TrainingJobStatus;
       this.logger.log(`Training job status: ${status}`);
@@ -280,7 +277,8 @@ export class SageMakerTraining {
     hyperParameters: Record<string, any>,
     metricDefinitions: MetricDefinition[],
     inputChannels: Channel[],
-    frameworkConfig: FrameworkConfig
+    frameworkConfig: FrameworkConfig,
+    tags: { Key: string; Value: string }[]
   ): CreateTrainingJobCommandInput {
     this.logger.log("Creating training job parameters...");
     this.logger.log("Source code location:", sourceCodeLocation);
@@ -315,6 +313,7 @@ export class SageMakerTraining {
         ...this.frameworkSpecificConfig.environmentVariables,
         SAGEMAKER_REGION: this.config.region,
         SAGEMAKER_CONTAINER_LOG_LEVEL: "10",
+        ...(resourceConfig.environmentVariables || {}),
       },
       RoleArn: this.config.role,
       InputDataConfig: inputChannels,
@@ -329,17 +328,13 @@ export class SageMakerTraining {
       HyperParameters: {
         sagemaker_program: "train.py",
         sagemaker_submit_directory: sourceCodeLocation,
+        "s3-output-path": `s3://${this.config.bucket}/${this.config.service}/${this.config.model}/${trainingJobName}/output`,
         ...mappedHyperParameters,
         ...(hyperParameters.schema && {
           data_schema: JSON.stringify(hyperParameters.schema),
         }),
       },
-      Tags: [
-        {
-          Key: "Framework",
-          Value: this.config.framework,
-        },
-      ],
+      Tags: tags,
     };
   }
 
@@ -349,7 +344,8 @@ export class SageMakerTraining {
     hyperParameters: Record<string, any>,
     inputData: InputDataConfig | InputDataConfig[],
     metricDefinitions: MetricDefinition[] = [],
-    monitor: boolean = false
+    monitor: boolean = false,
+    tags: { Key: string; Value: string }[] = []
   ): Promise<TrainingMetadata> {
     this.logger.log("Training job input parameters:", {
       frameworkConfig,
@@ -359,6 +355,14 @@ export class SageMakerTraining {
       metricDefinitions,
       monitor,
     });
+
+    const defaultTags = [
+      { Key: "Framework", Value: this.config.framework },
+      { Key: "Service", Value: this.config.service },
+      { Key: "Model", Value: this.config.model },
+    ];
+    const allTags = [...defaultTags, ...tags];
+
     try {
       const trainingJobName = `${this.config.service}-${
         this.config.model
@@ -404,12 +408,11 @@ export class SageMakerTraining {
         hyperParameters,
         metricDefinitions,
         inputChannels,
-        frameworkConfig
+        frameworkConfig,
+        allTags
       );
 
-      await this.sagemakerClient.send(
-        new CreateTrainingJobCommand(trainingJobParams)
-      );
+      await this.sagemakerClient.createTrainingJob(trainingJobParams);
       this.logger.log(`Training job started with name: ${trainingJobName}`);
 
       const status = monitor

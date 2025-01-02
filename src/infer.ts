@@ -1,13 +1,25 @@
-import { SageMakerClient } from "@aws-sdk/client-sagemaker";
-import { Logger, InferenceCallOptions, InferenceMetrics, SageMakerInferenceConfig, MetricsCallback, InferenceResponse } from "./interfaces";
-import { InvokeEndpointCommand } from "@aws-sdk/client-sagemaker-runtime";
+import {
+  SageMakerRuntime,
+} from "@aws-sdk/client-sagemaker-runtime";
+import {
+  Logger,
+  InferenceCallOptions,
+  InferenceMetrics,
+  SageMakerInferenceConfig,
+  MetricsCallback,
+  InferenceResponse,
+} from "./interfaces";
 
 export class SageMakerInference {
-  private client: SageMakerClient;
+  private client: SageMakerRuntime;
   private logger: Logger;
   private config: SageMakerInferenceConfig;
 
-  constructor(client: SageMakerClient, config: SageMakerInferenceConfig, logger: Logger) {
+  constructor(
+    client: SageMakerRuntime,
+    config: SageMakerInferenceConfig,
+    logger: Logger
+  ) {
     this.client = client;
     this.logger = logger;
     this.config = {
@@ -64,68 +76,93 @@ export class SageMakerInference {
   ): Promise<T> {
     const effectiveConfig = this.getEffectiveConfig(callOptions);
     const startTime = Date.now();
-    
+
     try {
-      this.logger.info(`Starting operation on endpoint: ${endpointName}, attempt: ${retryCount + 1}/${effectiveConfig.retry.maxAttempts}`);
-      
+      this.logger.info(
+        `Starting operation on endpoint: ${endpointName}, attempt: ${
+          retryCount + 1
+        }/${effectiveConfig.retry.maxAttempts}`
+      );
+
       const result = await Promise.race([
         operation(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout')), effectiveConfig.retry.timeoutMs)
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Timeout")),
+            effectiveConfig.retry.timeoutMs
+          )
         ),
       ]);
 
       const duration = Date.now() - startTime;
-      this.logger.info(`Operation successful on endpoint: ${endpointName}, duration: ${duration}ms`);
+      this.logger.info(
+        `Operation successful on endpoint: ${endpointName}, duration: ${duration}ms`
+      );
 
-      this.recordMetrics({
-        timestamp: startTime,
-        latencyMs: duration,
-        success: true,
-        endpointName,
-      }, effectiveConfig.monitoring);
+      this.recordMetrics(
+        {
+          timestamp: startTime,
+          latencyMs: duration,
+          success: true,
+          endpointName,
+        },
+        effectiveConfig.monitoring
+      );
 
       return result as T;
     } catch (error) {
       const duration = Date.now() - startTime;
-      
+
       if (retryCount < effectiveConfig.retry.maxAttempts) {
         this.logger.warn(
           `Operation failed on endpoint: ${endpointName}, ` +
-          `attempt: ${retryCount + 1}/${effectiveConfig.retry.maxAttempts}, ` +
-          `duration: ${duration}ms, error: ${error.message}`
+            `attempt: ${retryCount + 1}/${
+              effectiveConfig.retry.maxAttempts
+            }, ` +
+            `duration: ${duration}ms, error: ${error.message}`
         );
-        
-        const backoffTime = Math.pow(effectiveConfig.retry.backoffMultiplier!, retryCount) * 1000;
+
+        const backoffTime =
+          Math.pow(effectiveConfig.retry.backoffMultiplier!, retryCount) * 1000;
         this.logger.info(`Retrying in ${backoffTime}ms...`);
-        
-        await new Promise(resolve => setTimeout(resolve, backoffTime));
-        return this.executeWithRetry(operation, endpointName, callOptions, retryCount + 1);
+
+        await new Promise((resolve) => setTimeout(resolve, backoffTime));
+        return this.executeWithRetry(
+          operation,
+          endpointName,
+          callOptions,
+          retryCount + 1
+        );
       }
 
       this.logger.error(
         `All retry attempts failed for endpoint: ${endpointName}, ` +
-        `final duration: ${duration}ms, error: ${error.message}`
+          `final duration: ${duration}ms, error: ${error.message}`
       );
 
-      this.recordMetrics({
-        timestamp: startTime,
-        latencyMs: duration,
-        success: false,
-        endpointName,
-        error: error.message,
-      }, effectiveConfig.monitoring);
+      this.recordMetrics(
+        {
+          timestamp: startTime,
+          latencyMs: duration,
+          success: false,
+          endpointName,
+          error: error.message,
+        },
+        effectiveConfig.monitoring
+      );
 
       throw error;
     }
   }
 
   private recordMetrics(
-    metrics: InferenceMetrics, 
+    metrics: InferenceMetrics,
     monitoringConfig: { enabled: boolean; metricsCallback?: MetricsCallback }
   ): void {
     if (monitoringConfig?.enabled) {
-      const callback = monitoringConfig.metricsCallback || this.config.monitoring?.metricsCallback;
+      const callback =
+        monitoringConfig.metricsCallback ||
+        this.config.monitoring?.metricsCallback;
       if (callback) {
         callback(metrics);
       }
@@ -133,20 +170,23 @@ export class SageMakerInference {
   }
 
   private validateResponse(
-    response: any, 
-    validationConfig: { enabled: boolean; customValidator?: (response: any) => boolean }
+    response: any,
+    validationConfig: {
+      enabled: boolean;
+      customValidator?: (response: any) => boolean;
+    }
   ): void {
     if (!validationConfig?.enabled) return;
 
     if (validationConfig.customValidator) {
       if (!validationConfig.customValidator(response)) {
-        throw new Error('Custom validation failed for response');
+        throw new Error("Custom validation failed for response");
       }
       return;
     }
 
     if (!response || (Array.isArray(response) && response.length === 0)) {
-      throw new Error('Invalid response received from endpoint');
+      throw new Error("Invalid response received from endpoint");
     }
   }
 
@@ -166,7 +206,9 @@ export class SageMakerInference {
       targetModel,
       targetVariant,
       targetContainerHostname,
-      inferenceId = `inf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      inferenceId = `inf-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`,
       enableExplanations,
       inferenceComponentName,
       sessionId,
@@ -179,36 +221,34 @@ export class SageMakerInference {
       const customAttributesString = Object.entries(customAttributes)
         .map(([key, value]) => `${key}=${value}`)
         .join(",");
-      
+
       this.logger.info(
         `Invoking endpoint: ${endpointName}, ` +
-        `payload size: ${payloadSize} bytes, ` +
-        (targetModel ? `target model: ${targetModel}, ` : '') +
-        (targetVariant ? `target variant: ${targetVariant}, ` : '') +
-        (inferenceId ? `inference ID: ${inferenceId}, ` : '') +
-        (sessionId ? `session ID: ${sessionId}, ` : '') +
-        `content type: ${contentType}`
+          `payload size: ${payloadSize} bytes, ` +
+          (targetModel ? `target model: ${targetModel}, ` : "") +
+          (targetVariant ? `target variant: ${targetVariant}, ` : "") +
+          (inferenceId ? `inference ID: ${inferenceId}, ` : "") +
+          (sessionId ? `session ID: ${sessionId}, ` : "") +
+          `content type: ${contentType}`
       );
 
       const response = await this.executeWithRetry(
         async () => {
-          const result = await this.client.send(
-            new InvokeEndpointCommand({
-              EndpointName: endpointName,
-              ContentType: contentType,
-              Accept: accept,
-              CustomAttributes: customAttributesString,
-              Body: Buffer.from(jsonPayload),
-              // Add new targeting options
-              TargetModel: targetModel,
-              TargetVariant: targetVariant,
-              TargetContainerHostname: targetContainerHostname,
-              InferenceId: inferenceId,
-              EnableExplanations: enableExplanations,
-              InferenceComponentName: inferenceComponentName,
-              SessionId: sessionId,
-            })
-          );
+          const result = await this.client.invokeEndpoint({
+            EndpointName: endpointName,
+            ContentType: contentType,
+            Accept: accept,
+            CustomAttributes: customAttributesString,
+            Body: Buffer.from(jsonPayload),
+            // Add new targeting options
+            TargetModel: targetModel,
+            TargetVariant: targetVariant,
+            TargetContainerHostname: targetContainerHostname,
+            InferenceId: inferenceId,
+            EnableExplanations: enableExplanations,
+            InferenceComponentName: inferenceComponentName,
+            SessionId: sessionId,
+          });
 
           const responseBody = await result.Body.transformToString();
           const parsedResponse = JSON.parse(responseBody);
@@ -218,14 +258,19 @@ export class SageMakerInference {
             inferenceId,
             targetModel,
             targetVariant,
-            explanation: enableExplanations ? parsedResponse.explanation : undefined
+            explanation: enableExplanations
+              ? parsedResponse.explanation
+              : undefined,
           };
         },
         endpointName,
         options
       );
 
-      this.logger.debug(`Raw response from endpoint: ${endpointName}`, response);
+      this.logger.debug(
+        `Raw response from endpoint: ${endpointName}`,
+        response
+      );
 
       if (effectiveConfig.validation?.enabled) {
         this.logger.debug(`Validating response from endpoint: ${endpointName}`);
@@ -235,30 +280,27 @@ export class SageMakerInference {
       const transformedResponse = transformOutput(response);
       this.logger.info(
         `Successfully processed response from endpoint: ${endpointName}, ` +
-        `response size: ${this.getPayloadSize(transformedResponse)} bytes`
+          `response size: ${this.getPayloadSize(transformedResponse)} bytes`
       );
 
       return transformedResponse;
     } catch (error) {
-      this.logger.error(
-        `Inference failed for endpoint ${endpointName}:`,
-        {
-          error: error.message,
-          stack: error.stack,
-          inferenceId,
-          targetModel,
-          targetVariant,
-          sessionId,
-          payload: this.getPayloadSize(payload),
-          configuration: {
-            contentType,
-            accept,
-            customAttributes,
-            validation: effectiveConfig.validation,
-            retry: effectiveConfig.retry
-          }
-        }
-      );
+      this.logger.error(`Inference failed for endpoint ${endpointName}:`, {
+        error: error.message,
+        stack: error.stack,
+        inferenceId,
+        targetModel,
+        targetVariant,
+        sessionId,
+        payload: this.getPayloadSize(payload),
+        configuration: {
+          contentType,
+          accept,
+          customAttributes,
+          validation: effectiveConfig.validation,
+          retry: effectiveConfig.retry,
+        },
+      });
       throw error;
     }
   }
@@ -269,18 +311,20 @@ export class SageMakerInference {
     options: InferenceCallOptions = {}
   ): Promise<any[]> {
     if (!Array.isArray(payloads)) {
-      throw new Error('Payloads must be an array');
+      throw new Error("Payloads must be an array");
     }
 
     const totalPayloads = payloads.length;
     if (totalPayloads === 0) {
-      this.logger.warn(`Empty payload array provided for endpoint: ${endpointName}`);
+      this.logger.warn(
+        `Empty payload array provided for endpoint: ${endpointName}`
+      );
       return [];
     }
 
     const batchConfig = this.config.batch;
     if (!batchConfig?.enabled) {
-      throw new Error('Batch processing is not enabled');
+      throw new Error("Batch processing is not enabled");
     }
 
     const batchSize = batchConfig.maxBatchSize;
@@ -290,25 +334,30 @@ export class SageMakerInference {
 
     this.logger.info(
       `Starting batch operation on endpoint: ${endpointName}, ` +
-      `total items: ${totalPayloads}, ` +
-      `batch size: ${batchSize}, ` +
-      `concurrency: ${concurrency}`
+        `total items: ${totalPayloads}, ` +
+        `batch size: ${batchSize}, ` +
+        `concurrency: ${concurrency}`
     );
 
     try {
       for (let i = 0; i < payloads.length; i += batchSize * concurrency) {
         const batchStartTime = Date.now();
         const batchNumber = Math.floor(i / (batchSize * concurrency)) + 1;
-        const totalBatches = Math.ceil(totalPayloads / (batchSize * concurrency));
-        
-        const currentBatchSize = Math.min(batchSize * concurrency, payloads.length - i);
+        const totalBatches = Math.ceil(
+          totalPayloads / (batchSize * concurrency)
+        );
+
+        const currentBatchSize = Math.min(
+          batchSize * concurrency,
+          payloads.length - i
+        );
         this.logger.info(
           `Processing batch ${batchNumber}/${totalBatches}, ` +
-          `items: ${i + 1}-${i + currentBatchSize} of ${totalPayloads}`
+            `items: ${i + 1}-${i + currentBatchSize} of ${totalPayloads}`
         );
 
         const batch = payloads.slice(i, i + batchSize * concurrency);
-        const batchPromises = batch.map(payload => 
+        const batchPromises = batch.map((payload) =>
           this.invokeEndpoint(endpointName, payload, options)
         );
 
@@ -318,16 +367,16 @@ export class SageMakerInference {
         const batchDuration = Date.now() - batchStartTime;
         this.logger.info(
           `Completed batch ${batchNumber}/${totalBatches}, ` +
-          `duration: ${batchDuration}ms, ` +
-          `average time per item: ${batchDuration / currentBatchSize}ms`
+            `duration: ${batchDuration}ms, ` +
+            `average time per item: ${batchDuration / currentBatchSize}ms`
         );
       }
 
       const totalDuration = Date.now() - startTime;
       this.logger.info(
         `Batch operation completed for endpoint: ${endpointName}, ` +
-        `total duration: ${totalDuration}ms, ` +
-        `average time per item: ${totalDuration / totalPayloads}ms`
+          `total duration: ${totalDuration}ms, ` +
+          `average time per item: ${totalDuration / totalPayloads}ms`
       );
 
       return results;
@@ -335,8 +384,8 @@ export class SageMakerInference {
       const duration = Date.now() - startTime;
       this.logger.error(
         `Batch operation failed for endpoint: ${endpointName}, ` +
-        `duration: ${duration}ms, ` +
-        `processed: ${results.length}/${totalPayloads} items`,
+          `duration: ${duration}ms, ` +
+          `processed: ${results.length}/${totalPayloads} items`,
         error
       );
       throw error;
